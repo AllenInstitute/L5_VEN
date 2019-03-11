@@ -1,3 +1,11 @@
+formatPlotGenes <-function(plotGenes){
+  # Function for getting the plotting genes (to avoid typing it out a bunch of times)
+  for (k in -sort(-grep("-",topGenesExc))){
+    plotGenes=c(plotGenes[1:k],gsub("-","\\.",plotGenes[k]),plotGenes[(k+1):length(plotGenes)]) # Convert - to . for plotting
+  }
+  return(setdiff(plotGenes,"none"))
+} 
+
 rowMax <- function(x) return(apply(x,1,max))
 
 mixColors <- function(colorVector, scaleFactor=2, weights=NULL){
