@@ -220,3 +220,65 @@ annotate_factor <- function (df, col = NULL, base = NULL, na_val = "ZZ_Missing",
         "_label"))
     df
 }
+
+varibow <- function (n_colors) 
+{
+    sats <- rep_len(c(0.55, 0.7, 0.85, 1), length.out = n_colors)
+    vals <- rep_len(c(1, 0.8, 0.6), length.out = n_colors)
+    sub("FF$", "", grDevices::rainbow(n_colors, s = sats, v = vals))
+}
+
+values_to_colors <- function (x, min_val = NULL, max_val = NULL, colorset = c("darkblue", 
+    "dodgerblue", "gray80", "orange", "orangered"), missing_color = "black") 
+{
+    heat_colors <- (grDevices::colorRampPalette(colorset))(1001)
+    if (is.null(max_val)) {
+        max_val <- max(x, na.rm = T)
+    }
+    else {
+        x[x > max_val] <- max_val
+    }
+    if (is.null(min_val)) {
+        min_val <- min(x, na.rm = T)
+    }
+    else {
+        x[x < min_val] <- min_val
+    }
+    if (sum(x == min_val, na.rm = TRUE) == length(x)) {
+        colors <- rep(heat_colors[1], length(x))
+    }
+    else {
+        if (length(x) > 1) {
+            if (var(x, na.rm = TRUE) == 0) {
+                colors <- rep(heat_colors[500], length(x))
+            }
+            else {
+                heat_positions <- unlist(round((x - min_val)/(max_val - 
+                  min_val) * 1000 + 1, 0))
+                colors <- heat_colors[heat_positions]
+            }
+        }
+        else {
+            colors <- heat_colors[500]
+        }
+    }
+    if (!is.null(missing_color)) {
+        colors[is.na(colors)] <- grDevices::rgb(t(grDevices::col2rgb(missing_color)/255))
+    }
+    colors
+}
+
+group_annotations <- function (df, sample_col = "sample_name", keep_order = TRUE) 
+{
+    labels <- names(df)[grepl("_label", names(df))]
+    if (!keep_order) {
+        labels <- labels[order(labels)]
+    }
+    bases <- sub("_label", "", labels)
+    anno_cols <- c(paste0(rep(bases, each = 3), c("_id", "_label", 
+        "_color")))
+    extras <- setdiff(names(df), anno_cols)
+    anno <- select(df, one_of(c(sample_col, anno_cols, extras)))
+}
+
+
