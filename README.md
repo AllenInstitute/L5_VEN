@@ -5,15 +5,11 @@ While this is set up as an R library for convenience, it is really just a wrappe
 
 Install using:
 ```
-# Quickly, but without the vignettes:
 devtools::install_github("AllenInstitute/VENcelltypes")
-
-# More slowly, but with the vignettes:
-devtools::install_github("AllenInstitute/VENcelltypes", build_opts = c("--no-resave-data", "--no-manual"))
 ```
 ## Code book
 
-To replicate the figures in the paper, please use the code below or (load them from within R):
+To replicate the figures in the paper, please use the code below:
 
 1. **Code 1. Download and prepare the data** [(LINK TO SCRIPT)](http://htmlpreview.github.io/?https://github.com/AllenInstitute/VENcelltypes/blob/master/vignettes/Code1_prepareComparisonDataSets.nb.html)  This script reads converts data downloaded from the [Allen Institute Cell Types Database](http://celltypes.brain-map.org/rnaseq) into a format compatible for use as comparison data to human fronto-insula.  
 2. **Code 2. Rename clusters and build tree** [(LINK TO SCRIPT)](http://htmlpreview.github.io/?https://github.com/AllenInstitute/VENcelltypes/blob/master/vignettes/Code2_clusterNames_buildTree_Fig1.nb.html)  This script reads in the data and assigned clusters, organizes the clusters into a dendrogram, renames the clusters to include class information and informative genes, and then plots some summary plots.  
