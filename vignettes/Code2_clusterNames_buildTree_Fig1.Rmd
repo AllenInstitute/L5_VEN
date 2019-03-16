@@ -1,0 +1,368 @@
+---
+title: "Rename clusters and build tree"
+author: "Jeremy Miller"
+date: "March 8, 2019"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Overview
+
+This script reads in the data and assigned clusters, organizes the clusters into a dendrogram, renames the clusters to include class information and informative genes, and then plots the summary plots for inclusion in Figure 1.
+  
+If needed, set the working directory first: e.g. `setwd("C:/Users/jeremym/Desktop/VEN_TEST")`.  
+  
+### Load the relevant libraries
+
+```{r load libraries, warnings=FALSE}
+suppressPackageStartupMessages({
+  library(VENcelltypes) 
+  library(WGCNA) # For vectorizeMatrix
+  library(edgeR)
+  library(matrixStats)
+  library(feather)
+  library(dendextend)
+  library(ggplot2)
+  library(dplyr)
+  library(gplots)
+})
+options(stringsAsFactors=FALSE)
+```
+  
+  
+### Read in the data and metadata (including clusters)
+  
+These files are included as part of the R package installation.  
+  
+```{r load the data}
+data(FI_layer5_count_data)
+data(FI_layer5_sample_information)
+exprData <- FI_layer5_count_data
+Samp.dat <- FI_layer5_sample_information
+```
+
+
+### Determine top cluster marker genes here for building the tree and displaying in heatmaps and violin plots.
+  
+First subset the data only only included non-outlier clusters.   
+  
+```{r Save cluster info variable and excluded clusters}
+clusterType = Samp.dat$cluster_type_label 
+cl          = Samp.dat$cluster_id
+names(cl)   = colnames(exprData)
+includeClas = c("inh","exc","glia")
+excludeClas = sort(setdiff(clusterType,includeClas))
+kpSamp      = !is.element(clusterType,excludeClas) 
+```
+  
+  
+Get median expression per cluster and the proportions.  
+
+```{r medians and proportions}
+normDat    = log2(cpm(exprData)+1)
+colnames(normDat) = colnames(exprData)
+exprThresh = 1
+medianExpr = do.call("cbind", tapply(names(cl), cl, function(x) rowMedians(normDat[,x]))) 
+propExpr   = do.call("cbind", tapply(names(cl), cl, function(x) rowMeans(normDat[,x]>exprThresh))) 
+rownames(medianExpr) <- rownames(propExpr) <- rownames(normDat)  
+clusterOrd = as.character(sort(unique(Samp.dat$cluster_id)))
+clusterKp  = as.character(sort(unique(Samp.dat$cluster_id[kpSamp])))
+medianExpr = medianExpr[,clusterOrd]
+propExpr   = propExpr[,clusterOrd]
+presentGn  = apply(medianExpr[,clusterKp],1,max)>0
+```
+  
+  
+Identify uninformative genes to exclude from the cluster names.  We also exclude a set of known mitochondrial and ribosomal genes.  Note that all genes are use for all marker gene (and other) computations.  
+  
+```{r Informative genes}
+shinyFail    = (grepl("\\-",rownames(medianExpr)))|is.element(substr(rownames(medianExpr),1,1),0:9)  
+  # -'s don't plot correctly, numbers add an "X"
+excludeGenes = sort(rownames(medianExpr)[grepl("LOC",rownames(medianExpr))|grepl("LINC",rownames(medianExpr))|
+  grepl("FAM",rownames(medianExpr))|grepl("ORF",rownames(medianExpr))|grepl("KIAA",rownames(medianExpr))|
+  grepl("FLJ",rownames(medianExpr))|grepl("DKFZ",rownames(medianExpr))|grepl("RNF",rownames(medianExpr))|
+  grepl("RPS",rownames(medianExpr))|grepl("RPL",rownames(medianExpr))|shinyFail])  # Also exclude ribosomal genes
+
+data(mito_genes) 
+excludeGenes = sort(unique(c(excludeGenes,mito_genes)))
+
+keepGenes    = setdiff(rownames(medianExpr)[presentGn],excludeGenes)
+```
+  
+
+Identify the most specific genes for each cluster for naming.  
+  
+```{r specific marker genes}
+topGenes <- getTopMarkersByProp(propExpr[keepGenes,clusterKp],1,NULL,
+                                medianExpr[keepGenes,clusterKp],fcThresh=0.5,minProp=0.5)
+topGenes
+```
+
+### Rename clusters following the conventions from the MTG paper.
+  
+This is the reference: https://www.biorxiv.org/content/10.1101/384826v1  (UPDATE)
+  
+First we need to build the cluster info table
+  
+```{r cluster info table}
+clusterInfoAll = updateAndOrderClusters(Samp.dat,topGenes=topGenes, classLevels=c(includeClas,excludeClas),regionNameColumn=NULL,newColorNameColumn="cluster_color",layerNameColumn=NULL)
+sampleInfo  = as.data.frame(Samp.dat[kpSamp,])
+clusterInfo = clusterInfoAll[is.element(clusterInfoAll$cluster_type_label,includeClas),]
+clusterInfo
+```
+
+Next, we rename the clusters.  This involves appending the top specific genes calculated above, with the cluster class type, and some pre-defined markers for cell classes (defined just below).
+
+```{r rename clusters}
+### IMPORTANT: Genes used for broad class definitions.  ###
+majorGenes  = c("GAD2","SLC17A7","C3","AQP4","CSPG4","OPALIN")
+majorLabels = c("Inh","Exc","Micro","Astro","OPC","Oligo")
+broadGenes  = c("C3","AQP4","CSPG4","OPALIN","LAMP5","VIP","SST","PVALB","LHX6","LINC00507","RORB","THEMIS","FEZF2","CTGF")
+
+# Rename the clusters
+keepGenes2  = c(keepGenes,majorGenes,broadGenes)
+clusterKp   = clusterInfo$cluster_id
+newCluster  = renameClusters(sampleInfo,clusterInfo, propExpr[keepGenes2,clusterKp], medianExpr[keepGenes2,clusterKp], 
+    propDiff = 0, propMin=0.4, medianFC = 1, layerNameColumn=NULL, excludeGenes = excludeGenes,
+    majorGenes=majorGenes, majorLabels=majorLabels, broadGenes=broadGenes)
+
+# Cluster name clean-up
+newCluster <- gsub("  "," ",newCluster)        # Remove double spaces
+newCluster <- gsub("VIP VIP","VIP",newCluster) # Don't need same gene twice
+newCluster <- gsub("SST SST","SST",newCluster) # Don't need same gene twice
+clusterInfo$cluster_label = newCluster[clusterInfo[,1]]
+
+# Add top genes to cluster information
+clustSplit            <- strsplit(clusterInfo$cluster_label," ")
+clusterInfo$broadGene <- as.character(lapply(clustSplit,function(x) return(x[2])))
+clusterInfo$topGene   <- as.character(lapply(clustSplit,function(x) return(x[length(x)])))
+
+# Update sample info with new cluster labels
+clusterId           <- clusterInfo$cluster_id 
+names(clusterId)    <- clusterLabel <- clusterInfo$cluster_label
+names(clusterLabel) <- clusterInfo$old_cluster_label
+sampleInfo$cluster_label = clusterLabel[sampleInfo$cluster_label]
+```
+  
+  
+We want the cluster order to match that from the MTG paper.  Since cluster order does not affect computation, we will do that here by matching each FI cluster to each MTG cluster by correlating cluster medians, and then setting the order annd color of FI colors to match these matched types.  Note that the previously numbered script must be run to covert the MTG data to the appropriate feather files before this section of the code will work.    
+  
+```{r reorder clusters}  
+# Load the cluster info for MTG clusters
+data("clusterInfoMTG.RData")  
+
+# Read in and format MTG medians
+mediansMTG <- read_feather("MTG/medians.feather")
+mediansMTG <- as.data.frame(mediansMTG)
+rownames(mediansMTG) <- mediansMTG$gene
+mediansMTG <- mediansMTG[,colnames(mediansMTG)!="gene"]
+ord <- match(clusterInfoMTG$cluster_id,colnames(mediansMTG))
+colnames(mediansMTG) <- clusterInfoMTG$cluster_label[ord]
+mediansMTG <- log2(mediansMTG+1)
+
+# Format FI medians
+mediansFI <- medianExpr
+mediansFI <- mediansFI[,clusterInfo$cluster_id]
+ord <- match(clusterInfo$cluster_id,colnames(mediansFI))
+colnames(mediansFI) <- clusterInfo$cluster_label[ord]
+
+# Take all genes differentially expressed across clusters (FC>100) in both data sets as input
+dif     <- 100
+geneMTG <- rownames(mediansMTG)[apply(mediansMTG,1,function(x) diff(range(x)))>log2(dif)]
+geneFI  <- rownames(mediansFI)[apply(mediansFI,1,function(x) diff(range(x)))>log2(dif)]
+geneKp  <- sort(intersect(geneMTG,geneFI))
+
+# Assign an MTG cluster to each FI cell based on correlation of DEX genes
+corFM       <- cor(normDat[geneKp,],mediansMTG[geneKp,])
+clusterMTGa <- colnames(corFM)[apply(corFM,1,which.max)]
+clusterMTG  <- clusterMTGa[kpSamp]
+clusterFI   <- sampleInfo$cluster_label
+fclusterMTG <- factor(clusterMTG,levels=intersect(colnames(mediansMTG),clusterMTG))
+fclusterFI  <- factor(clusterFI,levels=intersect(colnames(mediansFI),clusterFI))
+
+# Match the MTG and FI clusters and plot the results
+tabMF <- t(table(fclusterMTG,fclusterFI))
+ord   <- order(-apply(tabMF,1,function(x){ x = x>=(max(x)/1.5); mean(cumsum(x/sum(x))); } ))
+tabMF <- tabMF[ord,]
+tabMF <- tabMF/apply(tabMF,1,max)
+celMF <- round(100*tabMF/apply(tabMF,1,sum))
+celMF[tabMF<1] = ""
+arealMatch <- colnames(tabMF)[apply(tabMF,1,function(x) which.max(x)[1])]
+names(arealMatch) <- rownames(tabMF)
+mediansMTG_match <- mediansMTG[,arealMatch]
+colnames(mediansMTG_match) <- names(arealMatch)
+
+# Update cluster info to order and color clusters as with the MTG data set
+clusterInfo               <- clusterInfo[match(rownames(tabMF),clusterInfo$cluster_label),]
+clusterInfo$lrank         <- 1:dim(clusterInfo)[1]
+clusterInfo$cellmap_label <- colnames(tabMF)[apply(tabMF,1,function(x) which.max(x)[1])]
+colMTG  <- clusterInfoMTG$cluster_color[match(colnames(tabMF),clusterInfoMTG$cluster_label)]
+colorFI <- apply(tabMF,1, function(x,col) mixColors(col,2,weights=x), colMTG)
+clusterInfo$cluster_color <- colorFI
+
+# Update sample info (cluster colors and cellmap info)  # NEED TO CHANGE TO SAMP.DAT
+ord <- match(sampleInfo$cluster_label,clusterInfo$cluster_label)
+sampleInfo$cluster_color <- clusterInfo$cluster_color[ord]
+ord <- match(clusterMTG,clusterInfoMTG$cluster_label)  
+sampleInfo$cellmap_color <- clusterInfoMTG$cluster_color[ord]
+sampleInfo$cellmap_label <- clusterInfoMTG$cluster_label[ord]
+sampleInfo$cellmap_id    <- clusterInfoMTG$cluster_id[ord]
+```
+  
+  
+Plot the comparison between FI and MTG clusters.  NOTE: This figure is currently not included in the paper.  Instead we compare four data sets together using Seurat in figure 3, and perform a more focused FI vs. MTG comparison in figure 4.  
+  
+```{r plot cluster comparison, fig.width=12, fig.height=6}   
+heatmap.2(tabMF,trace="none",dendrogram="none",Rowv=FALSE,Colv=FALSE,margins=c(12,12),cellnote=celMF,notecol="black")
+```  
+  
+  
+### Build clustering trees for nuclei based on the cluster calls
+  
+As with the MTG paper, we are only going to consider the top 1200 binary genes by beta for building the tree.  
+  
+```{r build dendrogram}  
+# Determine a score for cell type specificity in non-outlier clusters (marker/beta score)
+specificityScoreRank <- getBetaScore(propExpr[presentGn,clusterKp],FALSE)
+topNgenes <- 1200
+betaGenes <- names(specificityScoreRank)[specificityScoreRank<=topNgenes]
+
+# Build and reorder the dendrogram
+medianExpr2 <- medianExpr[betaGenes,match(clusterInfo$cluster_id,colnames(medianExpr))]
+colnames(medianExpr2) <- clusterInfo$cluster_label
+
+dend <- getDend(medianExpr2)
+l.rank <- setNames(as.integer(clusterInfo$lrank), clusterInfo$cluster_label)
+dend <- reorder.dend(dend,l.rank)
+dend <- collapse_branch(dend, 0.01)
+dend <- dend %>% set("leaves_pch", 19) %>% set("leaves_cex", 2) 
+```
+  
+  
+Plot the result and save it to a pdf file.  
+  
+```{r plot dendrogram}  
+main = paste("Dendrogram based on top",topNgenes,"specificity genes, correlation distance")
+label_color2 = clusterInfo$cluster_color[match(dend %>% labels,clusterInfo$cluster_label)]
+rankCompleteDendPlot(dend=dend,label_color=label_color2,main=main,node_size=4)
+
+pdf("clusterDendrogramFinal.pdf",height=10,width=12)
+label_color2 = clusterInfo$cluster_color[match(dend %>% labels,clusterInfo$cluster_label)]
+rankCompleteDendPlot(dend=dend,label_color=label_color2,main=main,node_size=4)
+dev.off()
+```
+
+### Save results for later and for plotting
+  
+The violin and heatmap functions require data to be in a specific feather format, and this section ensures that the outputted data is in the correct format.
+  
+```{r output all results} 
+## Create a folder for these data
+newInputFolder = "FI"
+dir.create(newInputFolder)
+
+## Output the dendrogram
+save(dend, file=paste0(newInputFolder,"/dend.rda"))
+
+## Format and output the data
+exprOut <- cpm(exprData)
+colnames(exprOut) <- Samp.dat$sample_id
+exprOut <- exprOut[,sampleInfo$sample_id]
+exprOut <- as.data.frame(t(exprOut))
+exprOut$sample_id <- sampleInfo$sample_id
+write_feather(exprOut,paste0(newInputFolder,"/data.feather"))   # CPM
+
+## Format and output the cluster information
+clusterInfo = clusterInfo[match(labels(dend),clusterInfo$cluster_label),]
+clusterInfo$cluster_id = 1:dim(clusterInfo)[1]
+save(clusterInfo,file=paste0(newInputFolder,"/clusterInfo.rda"))
+
+## Format and output the annotation information
+ord <- match(sampleInfo$cluster_label,clusterInfo$cluster_label)
+sampleInfo$cluster_id <- clusterInfo$cluster_id[ord]
+write_feather(sampleInfo,paste0(newInputFolder,"/anno.feather")) 
+
+## Format and output a descriptor file for the annotations
+cn   <- colnames(sampleInfo)[grepl("_label",colnames(sampleInfo))]
+type <- rep("cat",length(cn))
+for (i in 1:length(cn)) 
+  if(is.numeric(as.data.frame(Samp.dat[,cn[i]])[,1])) 
+    type[i] = "num"
+cn   <- gsub("_label","",cn)
+desc <- data.frame(base=cn,name=cn,type = type)  
+write_feather(desc,paste0(newInputFolder,"/desc.feather"))
+```
+  
+  
+### Plot heatmap of broad genes and output results 
+
+```{r heatmap of broad genes, fig.width=10,fig.height=6, warnings=FALSE} 
+all_clusters <- clusterInfo$cluster_id
+broadGenes   <- c("GAD2","LAMP5","VIP","LHX6","SST","PVALB","SLC17A7","LINC00507",
+                  "RORB","THEMIS","CTGF","FEZF2","SLC1A3","CSPG4","AQP4","OPALIN","C3")
+  
+broad_plot <- group_heatmap_plot(data_source = newInputFolder,
+                   genes = broadGenes,
+                   group_by = "cluster",
+                   clusters = all_clusters,
+                   calculation = "median",  # "trimmed_mean" in MTG paper
+                   labelheight = 40,
+                   showcounts = F)
+broad_plot
+ggsave("Fig1_broad_markers.pdf",broad_plot,height = 4, width = 6)
+
+```
+  
+  
+### Violin plots of enriched genes for each excitatory cluster 
+  
+We need to calculate a set of genes relatively enriched in each cluster.  As a first step, we will exclude genes that have wildly high values in off-target cell types.
+  
+```{r exclude off target genes} 
+# Get maximum expression per cluster (note medians and proportions previously calculated)
+maxExpr <- do.call("cbind", tapply(names(cl), cl, function(x) rowMax(normDat[,x])))
+rownames(maxExpr) <- rownames(propExpr)  
+maxExpr <- maxExpr[,colnames(propExpr)]
+
+# Only consider genes where no cells have 1.5x higher expression that the highest expression in the most common cluster
+maxExpr2  <- maxExpr[,clusterKp]
+for (i in 1:length(maxExpr2[,1])) maxExpr2[i,which.max(propExpr[i,clusterKp])] = maxExpr2[i,which.max(propExpr[i,clusterKp])]*1.5
+bestGenes <- apply(maxExpr2,1,which.max)==apply(propExpr[,clusterKp],1,which.max) 
+```
+  
+  
+Next, find the top marker genes for each excitatory cluster.
+  
+```{r find top marker genes} 
+kpEx        <- as.character(cl[match(clusterInfo$old_cluster_label,Samp.dat$cluster_label)])
+kpEx        <- intersect(kpEx,cl[clusterType=="exc"])
+topGenesExc <- getTopMarkersByProp(propExpr[bestGenes,kpEx],4,NULL,medianExpr[bestGenes,kpEx],fcThresh=0.5,minProp=0.5)
+topGenesExc <- vectorizeMatrix(t(topGenesExc))
+topGenesExc <- formatPlotGenes(topGenesExc)  # Format genes to be compatible with plotting function
+```
+  
+  
+Next, make the plots!
+  
+```{r specific violin plots, fig.width=5,fig.height=15} 
+kp <-  clusterInfo$cluster_type_label=="exc"
+exc_plot <- group_violin_plot(data_source = newInputFolder, clusters=all_clusters[kp], genes=topGenesExc,labelheight = 15)
+exc_plot
+```
+  
+  
+Finally, save the plots!
+  
+```{r save the exc violin plots}  
+ggsave("Fig1_exc_violinPlots_specificGenes.pdf", width = 5, height = 15)
+```
+  
+  
+Output session information.  
+  
+```{r sessionInfo}
+sessionInfo()
+```

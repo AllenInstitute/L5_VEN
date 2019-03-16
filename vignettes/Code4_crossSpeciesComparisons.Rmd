@@ -1,0 +1,357 @@
+---
+title: "Cross-species analysis"
+author: "Jeremy Miller"
+date: "March 8, 2019"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Overview
+
+This script performs alignment of deep excitatory neurons in human frontoinsula, human middle temporal gyrus, mouse primary visual cortex, and mouse anterior lateral motor cortex.  It also identifies genes with common and distinct patterning across these data sets.  
+  
+If needed, set the working directory first: e.g. `setwd("C:/Users/jeremym/Desktop/VEN_TEST")`.  
+  
+### Load the relevant libraries
+
+```{r load libraries, warning=FALSE}
+suppressPackageStartupMessages({
+  library(VENcelltypes)  
+  library(dplyr)
+  library(feather)
+  library(gplots)
+  library(Matrix)
+  library(cowplot)
+  library(Seurat)
+  library(pheatmap)
+})
+options(stringsAsFactors=FALSE)
+```
+  
+  
+### Read in the data and metadata, and subset to match data
+  
+These files were created in the previous code file, which *must be run prior to running this code block.*  First, let's read in the data from this manuscript (human FI).  We will subset these data to only include excitatory neurons.  
+  
+```{r read in FI data}
+## Read in the data
+inputFolder = "FI/"
+Expr.dat <- feather(paste(inputFolder,"data.feather",sep=""))
+annoFI   <- read_feather(paste(inputFolder,"anno.feather",sep="")) 
+exprData <- as.matrix(Expr.dat[,colnames(Expr.dat)[colnames(Expr.dat)!="sample_id"]])
+rownames(exprData) = Expr.dat$sample_id
+datFI    <- t(exprData)
+datFI    <- log2(datFI+1)
+
+load(paste(inputFolder,"clusterInfo.rda",sep="")) 
+infoFI   <- clusterInfo
+
+## Only include excitatory nuclei
+clusterType <- annoFI$cluster_type_label 
+datFI       <- datFI[,clusterType=="exc"]
+annoFI      <- annoFI[clusterType=="exc",]
+```
+  
+  
+Second, let's read in the data from human MTG.  We will subset these data to only include excitatory neurons from clusters found in layers 4 and 5, and will subset to a maximum of 50 nuclei per cell type to roughly match the number of nuclei in the two data sets.  **NOTE: for compatibility with the original analysis, the specific cells used are stored as a data object in the R library and the code used to generate this sampled list is commented out.  We have tried the analysis multiple time and get qualitatively and nearly quantitatively matched results with different cell subsets.**  
+  
+```{r read in MTG data}
+## Read in the data
+mtgFolder = "MTG/"
+annoMTG   <- read_feather(paste(mtgFolder,"anno.feather",sep="")) 
+Expr.datp <- feather(paste(mtgFolder,"data.feather",sep=""))
+annoMTG   <- annoMTG[match(Expr.datp$sample_id,annoMTG$sample_id),] 
+datMTG    <- as.matrix(Expr.datp[,names(Expr.datp)!="sample_id"])
+rownames(datMTG) <- annoMTG$sample_id
+datMTG    <- t(datMTG)
+datMTG    <- log2(datMTG+1)
+
+## Set the seed for subsampling for reproducibility
+seed <- 2 
+
+## Only include excitatory nuclei from clusters found in layers 4 and 5
+fracL   <- table(annoMTG$cluster_label,annoMTG$brain_subregion_label)	
+cntL5   <- fracL[,"L5"]	 
+fracL   <- t(t(fracL)*colSums(fracL))
+fracL5  <- ceiling(100*fracL[,"L5"]/rowSums(fracL))
+kpL5    <- names(fracL5)[pmax(fracL5,cntL5)>10]
+kpMTG   <- is.element(annoMTG$brain_subregion_label,c("L5","L4"))&is.element(annoMTG$cluster_label,kpL5)&
+           subsampleCells(annoMTG$cluster_label,50,seed)&(substr(annoMTG$cluster_label,1,3)=="Exc")
+# (The above step also subsets to 50 nuclei per cluster)
+
+datMTG  <- datMTG[,kpMTG]
+annoMTG <- annoMTG[kpMTG,]
+```
+  
+  
+Third, let's read in the data from mouse VISp.  For mouse data we will work at the subclass level, which for excitatory types lists the predominant layer of origin and measured projection targets, since these two pieces of information are our primary interest, and since we have a relatively small sample size and the brain regions across species aren't perfectly matched.  Within each subclass, we will select a maximum of 100 randomly chosen cells per subclass to roughly match the number of nuclei in the two data sets.  
+  
+```{r read in VISp data}
+## Read in the data
+vispFolder<- "VISp/"  
+annoVISp  <- read_feather(paste(vispFolder,"anno.feather",sep="")) 
+exprVISp  <- feather(paste(vispFolder,"data.feather",sep=""))
+annoVISp  <- annoVISp[match(exprVISp$sample_id,annoVISp$sample_id),] 
+
+## Select cells from VISp-specific excitatory subclasses
+kpVISp    <- (annoVISp$class_label=="Glutamatergic")&(annoVISp$cluster_label!="CR Lhx5")&
+             (!grepl("ALM",annoVISp$cluster_label))  # Remove any cells from ALM-predominant clusters
+kpVISp[kpVISp][!subsampleCells(annoVISp[kpVISp,]$subclass_label,100,seed)] = FALSE
+
+annoVISp  <- annoVISp[kpVISp,]
+datVISp   <- as.matrix(exprVISp[kpVISp,names(exprVISp)!="sample_id"])
+rownames(datVISp) <- annoVISp$sample_id
+datVISp   <- t(datVISp)
+datVISp   <- log2(datVISp+1)  
+```
+  
+  
+Fourth, let's read and format the data from mouse ALM, as with VISp above.  
+  
+```{r read in ALM data}
+almFolder <- "ALM/"  
+annoALM   <- read_feather(paste(almFolder,"anno.feather",sep="")) 
+exprALM   <- feather(paste(almFolder,"data.feather",sep=""))
+annoALM   <- annoALM[match(exprALM$sample_id,annoALM$sample_id),] 
+
+## Second ALM-specific excitatory clusters
+kpALM     <- (annoALM$class_label=="Glutamatergic")&(annoALM$cluster_label!="CR Lhx5")&
+             (!grepl("VISp",annoALM$cluster_label))  # Remove any cells from VISp-predominant clusters
+kpALM[kpALM][!subsampleCells(annoALM[kpALM,]$subclass_label,100,seed)] = FALSE
+
+annoALM   <- annoALM[kpALM,]
+datALM    <- as.matrix(exprALM[kpALM,names(exprALM)!="sample_id"])
+rownames(datALM) <- annoALM$sample_id
+datALM    <- t(datALM)
+datALM    <- log2(datALM+1) 
+```  
+  
+  
+Finally, find the intersection of all mouse and human genes available for analysis. We will exclude sex and mitochondrial genes, as with previous studies.  
+  
+```{r match genes}
+## Select the genes
+data(mito_genes)  
+data(sex_genes)  
+excludeGenes <- sort(unique(c(sex_genes,mito_genes)))  
+rownames(datVISp) <- rownames(datALM) <- toupper(rownames(datALM))
+kpGenes <- intersect(rownames(datALM),intersect(rownames(datMTG),rownames(datFI)))
+kpGenes <- sort(setdiff(kpGenes,excludeGenes))
+
+## Subset the data
+datVISp <- datVISp[kpGenes,]
+datALM  <- datALM[kpGenes,] 
+datFI   <- datFI[kpGenes,]
+datMTG  <- datMTG[kpGenes,] 
+```
+  
+ 
+### Integrate mouse and human data sets
+  
+Data integration has been shown to allow matching of very disparate data sets that measure the same (or comparable things), including previous work from our group on comparing human MTG to mouse VISp and ALM (https://www.biorxiv.org/content/early/2018/08/05/384826).  This part of the analysis pipeline directly follows the vignette provided as part of the Satija lab, here:https://satijalab.org/seurat/pancreas_integration_label_transfer.html.  
+  
+First we need to set up the required data and meta-data files for input into the the analysis.  
+  
+```{r data and metadata setup}
+## Prepare brain.data and brain.metadata (e.g., combine all data sets)
+brain.data     <- cbind(datVISp,datALM,datFI,datMTG)
+brain.metadata <- data.frame(set=c(rep("mouseVISp",dim(datVISp)[2]),
+ rep("mouseALM",dim(datALM)[2]),rep("humanFI",dim(datFI)[2]),rep("humanMTG",dim(datMTG)[2])),
+ celltype = c(paste("mouse VISp",annoVISp$subclass_label),paste("mouse ALM",annoALM$subclass_label),
+ annoFI$cluster_label,annoMTG$cluster_label))
+rownames(brain.metadata) <- colnames(brain.data)
+
+## Construct reference
+brain <- CreateSeuratObject(counts = brain.data, meta.data = brain.metadata)
+brain.list <- SplitObject(object = brain, split.by = "set")
+
+## Gene selection using variance stabilizing transformation (vst)
+for (i in 1:length(x = brain.list)) {
+    brain.list[[i]] <- NormalizeData(object = brain.list[[i]], verbose = FALSE)
+    brain.list[[i]] <- FindVariableFeatures(object = brain.list[[i]], 
+        selection.method = "vst", nfeatures = 2000, verbose = FALSE)
+}
+```
+
+  
+Next, find the integration anchors and run the main integration / alignment analysis, using all the parameters shown in the above vignette.  Note: in order for the "RunUMAP" function to work, you need to have Python installed with numpy, which is done outside of R.  I used `pip install numpy==1.15.1` to do this.  At the time of writing, *the current version of numpy (1.15.4) does not work with RunMAP*.  
+  
+```{r data integration analysis}
+## Set up a reference integrated data set using all four data sets
+brain.anchors    <- FindIntegrationAnchors(object.list = brain.list, dims = 1:30)
+brain.integrated <- IntegrateData(anchorset = brain.anchors, dims = 1:30)
+
+## Run the main integration analysis
+DefaultAssay(object = brain.integrated) <- "integrated"
+brain.integrated <- ScaleData(object = brain.integrated, verbose = FALSE)
+brain.integrated <- RunPCA(object = brain.integrated, npcs = 30, verbose = FALSE)
+brain.integrated <- RunUMAP(object = brain.integrated, reduction = "pca", dims = 1:30)
+```  
+  
+  
+Define clusters on the intergrated data set using Louvain community detection.  We use resolution of 0.3 instead of the default 0.6 here.  
+  
+```{r data clustering}
+resolution       <- 0.6
+brain.integrated <- FindNeighbors(object = brain.integrated, dims = 1:30)
+brain.integrated <- FindClusters(object = brain.integrated, resolution = resolution)
+eval(parse(text=paste0("brain.integrated@meta.data$clusterCall <- brain.integrated@meta.data$integrated_snn_res.",resolution)))
+```   
+  
+  
+Plot the fraction of each cell type in each Seurat cluster.  This is used to determine the cluster names moving forward.    
+  
+```{r heatmap to rename clusters, fig.height=9,fig.width=6}
+compare = table(brain.integrated@meta.data$celltype,brain.integrated@meta.data$clusterCall)
+compare = round(100*compare/rowSums(compare))
+heatmap.2(compare, dendrogram="row", trace="none", Colv=FALSE, margins = c(5, 15), 
+  colsep=1:100, rowsep=1:100, RowSideColors=rep("black",48))
+```   
+  
+  
+Rename clusters accordingly.  
+  
+```{r rename clusters}
+cellClasses <- c("3. L5 IT","4. L6 IT","1. L2/3 IT","2. L4* IT","8. NP","7. L6b","5. L5 PT","6. L6 CT")
+names(cellClasses) <- colnames(compare)
+brain.integrated@meta.data$className <- cellClasses[brain.integrated@meta.data$clusterCall]  
+```   
+  
+  
+How many genes from each data set are in each class?  
+  
+```{r cluster summary table}
+table(brain.integrated@meta.data$className,brain.integrated@meta.data$set)  
+```   
+  
+The number of cells from each data set in each type is identical (or vary close to) the expected number based on the sampling, confirming that these are meaningful clusters.  
+  
+Plot a dendrogram of cell classes.  
+  
+```{r plot dendrogram of classes, fig.height=9,fig.width=6}
+heat.colors  <- colorRampPalette(c("grey99", "orange", "red"))(100)
+combined.cl  <- brain.integrated@meta.data %>% mutate(ref.cl = celltype)
+ref.cl       <- setNames(combined.cl$celltype, rownames(brain.integrated@meta.data))
+seurat.cl    <- setNames(combined.cl$className, rownames(brain.integrated@meta.data))
+comb.cl.anno <- combined.cl %>% group_by(celltype) %>% summarise(set = dplyr::first(set))
+ct           <- comb.cl.anno$celltype
+comb.cl.anno <- as.data.frame(comb.cl.anno[,-1])
+rownames(comb.cl.anno)  <- ct
+
+cols <- list(set=scales::hue_pal()(4))  # Colors used in ggplot2
+names(cols[["set"]]) <- unique(comb.cl.anno$set)
+cl.conf <- compareClusterCalls(ref.cl, seurat.cl, comb.cl.anno, heat.colors=heat.colors, annotation_colors = cols,
+ file="Fig3_dendrogramComparison_cortexIntegrated.pdf",height=10,width=5)
+
+cl.conf$ph # NOTE, this only displays to the screen if you copy and paste into the terminal
+```  
+  
+  
+Plot the data in UMAP space.  
+  
+```{r plot UMAP, fig.height=6,fig.width=14}
+p1 <- DimPlot(object = brain.integrated, group.by = "set", reduction = "umap", 
+      do.return = TRUE, pt.size = 1)
+p2 <- DimPlot(object = brain.integrated, group.by = "className",  reduction = "umap", 
+      do.return = TRUE, pt.size = 1, label=TRUE, label.size = 6)
+plot_grid(p1, p2)
+ggsave("Fig3_UMAP_cortexIntegrated.pdf",height=6,width=14)
+``` 
+  
+  
+### Identify common marker genes across data sets
+  
+Data integration only ensures that the cells are matched, but does not say anything about agreement in gene expression.  While the method does adjust gene expression levels, in our experience these adjusted levels are often too divorced from the initial values to be of use.  We next seek to identify common marker genes across data sets using the log2(CPM+1) data as a starting point.  
+
+Identify cluster averages and gene specificity across data sets, using the Seurat cluster calls as the subclass definitions.  
+  
+```{r find subclass based information per data set}
+## Use cell type calls from Seurat as the subclass labels
+ctVISp <- brain.integrated@active.ident[colnames(datVISp)]
+ctALM  <- brain.integrated@active.ident[colnames(datALM)]
+ctFI   <- brain.integrated@active.ident[colnames(datFI)]
+ctMTG  <- brain.integrated@active.ident[colnames(datMTG)]
+
+## Calculate trimmed averages across data sets
+dats <- list(2^datVISp-1,2^datALM-1,2^datFI-1,2^datMTG-1)  # CONVERT TO LINEAR SPACE
+cts  <- list(ctVISp,ctALM,ctFI,ctMTG)
+avg  <- list()
+for (i in 1:4){
+  avg[[i]] <- do.call("cbind", tapply(names(cts[[i]]), cts[[i]], function(x) apply(dats[[i]][,x],1,mean,trim=0.25))) 
+  rownames(avg[[i]]) <- rownames(dats[[i]])
+  avg[[i]] <- avg[[i]][,names(sort(cellClasses))]
+  colnames(avg[[i]]) <- sort(cellClasses)
+}
+
+## Calculate a specificity index (lower means expressed in a smaller number of types)
+spec <- avg[[1]][,1]*0+1
+for (i in 1:4){
+  tmp2 <- avg[[i]]/rowSums(avg[[i]]+0.00000000001)
+  tmp2 <- t(apply(tmp2,1,function(x) cumsum(sort(x))))
+  tmp2 <- rowSums(tmp2)
+  tmp2[tmp2==0] = 8
+  spec <- pmax(spec,tmp2)
+}
+```
+  
+  
+Next, find the correlation between data sets and identify genes that are both specific to a small number of subtypes and also correlated across all data sets.  
+  
+```{r common marker genes, warning=FALSE}
+## Calculate correlations across data sets
+corMin <- avg[[1]][,1]*0+1
+for (i in 2:4) for(j in 1:(i-1)){
+ #datTmp <- log2(cbind(avg[[i]],avg[[j]])+1)
+ datTmp <- cbind(avg[[i]],avg[[j]])
+ corMin <- pmin(corMin,apply(datTmp,1,function(x) cor(x[1:8],x[9:16])))
+}
+corMin[is.na(corMin)]=-1
+
+## Identify genes that are expressed relatively specifically to a subtype and highly correlated across all data sets
+#plotGn <- names(corMin)[(corMin>0.55)&(tmp2<2.75)]
+plotGn <- names(corMin)[(corMin>0.75)&(tmp2<3)]
+
+## Output the most specific genes
+(topGenes <- names(corMin)[(corMin>0.9)&(tmp2<1.5)])
+```
+  
+  
+Plot the common marker genes across all four data sets
+  
+```{r plot to screen common marker genes, fig.height=8,fig.width=8}
+## Order the genes and plot the results in all four data sets
+tmp <- avg[[1]][plotGn,] + avg[[2]][plotGn,] + avg[[3]][plotGn,] + avg[[4]][plotGn,]
+tmp <- tmp/rowSums(tmp)
+ord <- order(-apply(tmp,1,which.max)*10,rowMeans(t(apply(tmp,1,cumsum))))
+mains <- c("Mouse VISp","Mouse ALM","Human FI","Human MTG")
+
+for (i in 1:4){
+ plotVal <- avg[[i]][plotGn,][ord,]
+ plotVal <- plotVal/apply(plotVal,1,max)
+ heatmap(plotVal,Rowv=NA,Colv=NA, main=mains[i],scale="none");
+}
+```
+  
+  
+Now plot to the file
+  
+```{r plot to file common marker genes, warning=FALSE}
+pdf("FigS2_commonGenes_heatmap.pdf",height=10,width=10)
+for (i in 1:4){
+ plotVal <- avg[[i]][plotGn,][ord,]
+ plotVal <- plotVal/apply(plotVal,1,max)
+ heatmap(plotVal,Rowv=NA,Colv=NA, main=mains[i],scale="none");
+}
+heatmap.2(plotVal/apply(plotVal,1,max),Rowv=NA,Colv=NA, main="Plot for color bar only")
+dev.off()
+```
+  
+  
+Output session information.  
+  
+```{r sessionInfo}
+sessionInfo()
+```    
