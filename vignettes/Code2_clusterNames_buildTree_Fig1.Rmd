@@ -347,7 +347,7 @@ topGenesExc <- formatPlotGenes(topGenesExc)  # Format genes to be compatible wit
   
 Next, make the plots!
   
-```{r specific violin plots, fig.width=5,fig.height=15} 
+```{r specific violin plots, fig.width=5,fig.height=15, warning=FALSE} 
 kp <-  clusterInfo$cluster_type_label=="exc"
 exc_plot <- group_violin_plot(data_source = newInputFolder, clusters=all_clusters[kp], genes=topGenesExc,labelheight = 15)
 exc_plot
@@ -359,6 +359,81 @@ Finally, save the plots!
 ```{r save the exc violin plots}  
 ggsave("Fig1_exc_violinPlots_specificGenes.pdf", width = 5, height = 15)
 ```
+  
+  
+### Violin plots of validated genes 
+  
+In our study we valided expression of several genes in layer 5 of FI.  Here is the expression of those genes in excitatory types.    
+  
+```{r input valudated genes, fig.width=5,fig.height=6} 
+valGenes <- c("SLC17A7","FEZF2","GABRQ","ADRA1A","POU3F1","ITGA4","BMP3","RORB","HTR2C","GABRE","GABRG1","ADRA2A","ALDH1A1")
+kp <-  clusterInfo$cluster_type_label=="exc"
+val_plot <- group_violin_plot(data_source = newInputFolder, clusters=all_clusters[kp], genes=valGenes,labelheight = 25)
+val_plot
+```
+  
+  
+Save the plots!
+  
+```{r save the valudated violin plots}  
+ggsave("Fig2_violinPlots_validatedGenes.pdf", width = 5, height = 6)
+```
+  
+  
+### Violin plots of literature-based genes 
+  
+Several studies have identified genes (or proteins) expressed in VENs using a variety of strategies.  Here we will plot the expression of these genes in our data set to get a sense of how specific these genes are to a specific cluster.  First, let's see which of these genes are available for plotting in our study.  
+  
+```{r input interature VEN genes} 
+literature <- c("VAT1L","CHST8","LYPD1","SULF2","BCL11B","FEZF2","SLC18A2","GABRQ","ADRA1A","ATF3","IL4R",
+                "NMB","DISC1","VGF","ABAT","CBLN2","CHRM1","CHRNA4","CNR1","CRYM","DLD","GABBR1","GABRR2",
+                "GABRA","GABRB2","GABRB3","GABRD","GLRB","GLS","GOT1","GOT2","GRIA1","GRIA2","GRIA3","GRIK2",
+                "GRIN1","GRIN2A","GRIN2B","GRIN3A","HRH3","HTR3B","NEFH","NNAT","SCG2","SYT2","TAC1","NPY",
+                "IGFBP2","MEF2C","CPLX1","MBP","PLP1","RNA5SP352","ACA64","ALKBH3","FABP6","PLP1","METRNL",
+                "LINC00982","RNU6-1240P","RGMA","PRR5","HAPLN4","SOHLH1","HTR2B","DRD3","GRP","LMO4")
+print(paste("Genes not in our data set:",paste(setdiff(literature,rownames(normDat)),collapse=", ")))
+literature <- intersect(literature,rownames(normDat))
+```
+  
+  
+Second, roughly order these genes by their specificity in the VEN cluster (Exc FEZF2 GABRQ).
+  
+```{r order literature VEN genes}
+val2 <- 2*propExpr[literature,match("20",colnames(propExpr))] -
+        apply(propExpr[literature,match(clusterInfo$cluster_id,colnames(propExpr))][,kp],1,quantile,0.75)
+plotGenes <- names(sort(-(val2)))
+```
+  
+  
+Next, make the plots!
+  
+```{r violin plots for literature VEN genes, fig.width=5,fig.height=18} 
+kp <-  clusterInfo$cluster_type_label=="exc"
+lit_plot <- group_violin_plot(data_source = newInputFolder, clusters=all_clusters[kp], genes=plotGenes,labelheight = 15)
+lit_plot
+```
+  
+  
+Finally, save the plots!
+  
+```{r save the literature VEN violin plots}  
+ggsave("FigS3_violinPlots_literatureVENgenes_excClusters.pdf", width = 5, height = 18)
+```
+  
+Next, make the plots!
+  
+```{r violin plots for literature VEN genes all, fig.width=7,fig.height=18} 
+lit_plot <- group_violin_plot(data_source = newInputFolder, clusters=all_clusters, genes=plotGenes,labelheight = 15)
+lit_plot
+```
+  
+  
+Finally, save the plots!
+  
+```{r save the literature VEN violin plots all}  
+ggsave("FigS3_violinPlots_literatureVENgenes_allClusters.pdf", width = 7, height = 18)
+```
+  
   
   
 Output session information.  
