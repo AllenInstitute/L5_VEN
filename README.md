@@ -7,6 +7,12 @@ Install using:
 ```
 devtools::install_github("AllenInstitute/VENcelltypes")
 ```
+
+There are several dependencies listed in the code books below, but one notable one is that [version **3.0** of Seurat](https://satijalab.org/seurat/pancreas_integration_label_transfer.html) needs to be installed.
+```
+devtools::install_github(repo = "satijalab/seurat", ref = "release/3.0")
+```
+
 ## Code book
 
 To replicate the figures in the paper, please use the code below:
