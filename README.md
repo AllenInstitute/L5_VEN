@@ -23,6 +23,8 @@ To replicate the figures in the paper, please use the code below:
 4. **Code 4. Cross-species analysis** [(LINK TO SCRIPT)](http://htmlpreview.github.io/?https://github.com/AllenInstitute/VENcelltypes/blob/master/vignettes/Code4_crossSpeciesComparisons.nb.html)  This script performs alignment of deep excitatory neurons in human fronto-insula, human middle temporal gyrus, mouse primary visual cortex, and mouse anterior lateral motor cortex.  It also identifies genes with common and distinct patterning across these data sets.  
 5. **Code 5. Human FI vs. Human MTG comparison** [(LINK TO SCRIPT)](http://htmlpreview.github.io/?https://github.com/AllenInstitute/VENcelltypes/blob/master/vignettes/Code5_humanMTGvsFI.nb.html)  This script identifies common and distinct CF-associated genes in human middle temporal gyrus as compared with human fronto-insula, and compares the proportions of cells across clusters for each brain region.  
 
+All code was tested in both a UNIX and Windows environment and show to produce the same result, with the exception of the UMAP visualization noted in Code 4.
+
 Please e-mail jeremym@alleninstitute.org with any issues.
 
 ## License
