@@ -1,7 +1,7 @@
 ---
 title: "Cross-species analysis"
 author: "Jeremy Miller"
-date: "March 8, 2019"
+date: "March 27, 2019"
 output: html_notebook
 ---
 
@@ -19,7 +19,6 @@ If needed, set the working directory first: e.g. `setwd("C:/Users/jeremym/Deskto
 
 ```{r load libraries, warning=FALSE}
 suppressPackageStartupMessages({
-  library(VENcelltypes)  
   library(dplyr)
   library(feather)
   library(gplots)
@@ -27,6 +26,7 @@ suppressPackageStartupMessages({
   library(cowplot)
   library(Seurat)
   library(pheatmap)
+  library(VENcelltypes)  
 })
 options(stringsAsFactors=FALSE)
 ```
@@ -56,11 +56,11 @@ annoFI      <- annoFI[clusterType=="exc",]
 ```
   
   
-Second, let's read in the data from human MTG.  We will subset these data to only include excitatory neurons from clusters found in layers 4 and 5, and will subset to a maximum of 50 nuclei per cell type to roughly match the number of nuclei in the two data sets.  **NOTE: for compatibility with the original analysis, the specific cells used are stored as a data object in the R library and the code used to generate this sampled list is commented out.  We have tried the analysis multiple time and get qualitatively and nearly quantitatively matched results with different cell subsets.**  
+Second, let's read in the data from human MTG.  We will subset these data to only include excitatory neurons from clusters found in layers 4 and 5, and will subset to a maximum of 50 nuclei per cell type to roughly match the number of nuclei in the two data sets.  For compatibility with the original analysis, we set the seed below.  We have tried the analysis multiple time and get qualitatively and nearly quantitatively matched results with different cell subsets, although the resolution value in Suerat (below) may need minor adjustments depending on the seed.  
   
-```{r read in MTG data}
+```{r read in MTG data 1}
 ## Read in the data
-mtgFolder = "MTG/"
+mtgFolder <- "MTG/"
 annoMTG   <- read_feather(paste(mtgFolder,"anno.feather",sep="")) 
 Expr.datp <- feather(paste(mtgFolder,"data.feather",sep=""))
 annoMTG   <- annoMTG[match(Expr.datp$sample_id,annoMTG$sample_id),] 
@@ -70,20 +70,20 @@ datMTG    <- t(datMTG)
 datMTG    <- log2(datMTG+1)
 
 ## Set the seed for subsampling for reproducibility
-seed <- 2 
+seed      <- 6
 
 ## Only include excitatory nuclei from clusters found in layers 4 and 5
-fracL   <- table(annoMTG$cluster_label,annoMTG$brain_subregion_label)	
-cntL5   <- fracL[,"L5"]	 
-fracL   <- t(t(fracL)*colSums(fracL))
-fracL5  <- ceiling(100*fracL[,"L5"]/rowSums(fracL))
-kpL5    <- names(fracL5)[pmax(fracL5,cntL5)>10]
-kpMTG   <- is.element(annoMTG$brain_subregion_label,c("L5","L4"))&is.element(annoMTG$cluster_label,kpL5)&
+fracL     <- table(annoMTG$cluster_label,annoMTG$brain_subregion_label)	
+cntL5     <- fracL[,"L5"]	 
+fracL     <- t(t(fracL)*colSums(fracL))
+fracL5    <- ceiling(100*fracL[,"L5"]/rowSums(fracL))
+kpL5      <- names(fracL5)[pmax(fracL5,cntL5)>10]
+kpMTG     <- is.element(annoMTG$brain_subregion_label,c("L5","L4"))&is.element(annoMTG$cluster_label,kpL5)&
            subsampleCells(annoMTG$cluster_label,50,seed)&(substr(annoMTG$cluster_label,1,3)=="Exc")
 # (The above step also subsets to 50 nuclei per cluster)
 
-datMTG  <- datMTG[,kpMTG]
-annoMTG <- annoMTG[kpMTG,]
+datMTG    <- datMTG[,kpMTG]
+annoMTG   <- annoMTG[kpMTG,]
 ```
   
   
@@ -165,7 +165,7 @@ brain.metadata <- data.frame(set=c(rep("mouseVISp",dim(datVISp)[2]),
 rownames(brain.metadata) <- colnames(brain.data)
 
 ## Construct reference
-brain <- CreateSeuratObject(counts = brain.data, meta.data = brain.metadata)
+brain <- CreateSeuratObject(brain.data, meta.data = brain.metadata)
 brain.list <- SplitObject(object = brain, split.by = "set")
 
 ## Gene selection using variance stabilizing transformation (vst)
@@ -177,7 +177,7 @@ for (i in 1:length(x = brain.list)) {
 ```
 
   
-Next, find the integration anchors and run the main integration / alignment analysis, using all the parameters shown in the above vignette.  Note: in order for the "RunUMAP" function to work, you need to have Python installed with numpy, which is done outside of R.  I used `pip install numpy==1.15.1` to do this.  At the time of writing, *the current version of numpy (1.15.4) does not work with RunMAP*.  
+Next, find the integration anchors and run the main integration / alignment analysis, using all the parameters shown in the above vignette.  Note: in order for the "RunUMAP" function to work, you need to have Python installed with numpy, which is done outside of R.  I used `pip install --user numpy==1.15.1` to do this.  At the time of writing, *the current version of numpy (1.15.4) does not work with RunMAP*.  
   
 ```{r data integration analysis}
 ## Set up a reference integrated data set using all four data sets
@@ -195,7 +195,8 @@ brain.integrated <- RunUMAP(object = brain.integrated, reduction = "pca", dims =
 Define clusters on the intergrated data set using Louvain community detection.  We use resolution of 0.3 instead of the default 0.6 here.  
   
 ```{r data clustering}
-resolution       <- 0.6
+resolution       <- 0.3
+FindNeighbors.Seurat <- VENcelltypes::FindNeighbors.Seurat  ## REQUIRED FOR CONSISTENT OUTPUT IN WINDOWS AND UNIX
 brain.integrated <- FindNeighbors(object = brain.integrated, dims = 1:30)
 brain.integrated <- FindClusters(object = brain.integrated, resolution = resolution)
 eval(parse(text=paste0("brain.integrated@meta.data$clusterCall <- brain.integrated@meta.data$integrated_snn_res.",resolution)))
@@ -215,7 +216,7 @@ heatmap.2(compare, dendrogram="row", trace="none", Colv=FALSE, margins = c(5, 15
 Rename clusters accordingly.  
   
 ```{r rename clusters}
-cellClasses <- c("3. L5 IT","4. L6 IT","1. L2/3 IT","2. L4* IT","8. NP","7. L6b","5. L5 PT","6. L6 CT")
+cellClasses <- c("3. L5 IT","2. L4* IT","1. L2/3 IT","4. L6 IT","8. NP","7. L6b","5. L5 CF","6. L6 CT")
 names(cellClasses) <- colnames(compare)
 brain.integrated@meta.data$className <- cellClasses[brain.integrated@meta.data$clusterCall]  
 ```   
@@ -227,7 +228,7 @@ How many genes from each data set are in each class?
 table(brain.integrated@meta.data$className,brain.integrated@meta.data$set)  
 ```   
   
-The number of cells from each data set in each type is identical (or vary close to) the expected number based on the sampling, confirming that these are meaningful clusters.  
+The number of cells from each data set in each type is very close to the expected number based on the sampling, confirming that these are meaningful clusters.  
   
 Plot a dendrogram of cell classes.  
   
@@ -246,11 +247,11 @@ names(cols[["set"]]) <- unique(comb.cl.anno$set)
 cl.conf <- compareClusterCalls(ref.cl, seurat.cl, comb.cl.anno, heat.colors=heat.colors, annotation_colors = cols,
  file="Fig3_dendrogramComparison_cortexIntegrated.pdf",height=10,width=5)
 
-cl.conf$ph # NOTE, this only displays to the screen if you copy and paste into the terminal
+cl.conf$ph # NOTE, this only displays to the screen if you copy and paste into the console
 ```  
   
   
-Plot the data in UMAP space.  
+Visualize the data in UMAP space.  **NOTE: The UMAP projection output using Windows (or other R/python configurations) may not agree with the UMAP projection shown here; however the cells assigned to each cluster (and thus all downstream analysis) will be identical.**  
   
 ```{r plot UMAP, fig.height=6,fig.width=14}
 p1 <- DimPlot(object = brain.integrated, group.by = "set", reduction = "umap", 
@@ -276,7 +277,7 @@ ctFI   <- brain.integrated@active.ident[colnames(datFI)]
 ctMTG  <- brain.integrated@active.ident[colnames(datMTG)]
 
 ## Calculate trimmed averages across data sets
-dats <- list(2^datVISp-1,2^datALM-1,2^datFI-1,2^datMTG-1)  # CONVERT TO LINEAR SPACE
+dats <- list(2^datVISp-1,2^datALM-1,2^datFI-1,2^datMTG-1)  # CONVERT BACK TO LINEAR SPACE
 cts  <- list(ctVISp,ctALM,ctFI,ctMTG)
 avg  <- list()
 for (i in 1:4){
@@ -304,22 +305,17 @@ Next, find the correlation between data sets and identify genes that are both sp
 ## Calculate correlations across data sets
 corMin <- avg[[1]][,1]*0+1
 for (i in 2:4) for(j in 1:(i-1)){
- #datTmp <- log2(cbind(avg[[i]],avg[[j]])+1)
  datTmp <- cbind(avg[[i]],avg[[j]])
  corMin <- pmin(corMin,apply(datTmp,1,function(x) cor(x[1:8],x[9:16])))
 }
 corMin[is.na(corMin)]=-1
 
 ## Identify genes that are expressed relatively specifically to a subtype and highly correlated across all data sets
-#plotGn <- names(corMin)[(corMin>0.55)&(tmp2<2.75)]
-plotGn <- names(corMin)[(corMin>0.75)&(tmp2<3)]
-
-## Output the most specific genes
-(topGenes <- names(corMin)[(corMin>0.9)&(tmp2<1.5)])
+plotGn <- names(corMin)[(corMin>0.75)&(tmp2<2.75)]
 ```
   
   
-Plot the common marker genes across all four data sets
+Plot the common marker genes across all four data sets.  These plots are showing the trimmed mean expression (trim=0.25) of each gene in each cluster.  This ensures that marker genes are expressed in at least 25% of cells in the "on" cluster in all four species.  
   
 ```{r plot to screen common marker genes, fig.height=8,fig.width=8}
 ## Order the genes and plot the results in all four data sets
