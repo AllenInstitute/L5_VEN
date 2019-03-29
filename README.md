@@ -29,7 +29,7 @@ Please e-mail jeremym@alleninstitute.org with any issues.
 
 ## License
 
-The license for this package is available on Github at: https://github.com/AllenInstitute/mfishtools/blob/master/LICENSE
+The license for this package is available on Github at: https://github.com/AllenInstitute/VENcelltypes/blob/master/LICENSE
 
 ## Level of Support
 
@@ -37,4 +37,4 @@ This code will be updated only if figures change during review.
 
 ## Contribution Agreement
 
-If you contribute code to this repository through pull requests or other mechanisms, you are subject to the Allen Institute Contribution Agreement, which is available in full at: https://github.com/AllenInstitute/mfishtools/blob/master/CONTRIBUTION
+If you contribute code to this repository through pull requests or other mechanisms, you are subject to the Allen Institute Contribution Agreement, which is available in full at: https://github.com/AllenInstitute/VENcelltypes/blob/master/CONTRIBUTION
