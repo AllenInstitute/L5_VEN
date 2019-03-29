@@ -1,4 +1,19 @@
-## Required functions
+#' Get some summary statistics.  From library(patchseqtools)
+#'
+#' This does the summary. For each group return a vector with N, mean, and sd.
+#' This is called by qcPlot.
+#'
+#' @param data Annotation data frame
+#' @param measurevar what variables to measure
+#' @param groupvars what to group by
+#' @param na.rm how to treat NA
+#' @param conf.interval confidence interval (default = .95)
+#' @param .drop drop something?
+#' @param roundall should everything be rounded
+#'
+#' @return a data frame of statistics
+#'
+#' @export
 summarySE <- function(data=NULL, measurevar, groupvars=NULL, na.rm=FALSE,
                       conf.interval=.95, .drop=TRUE, roundall = F) {
   require(dplyr)
@@ -36,7 +51,20 @@ summarySE <- function(data=NULL, measurevar, groupvars=NULL, na.rm=FALSE,
 }
 
 
-# This function makes the actual plots!
+#' Makes QC plots.  From library(patchseqtools)
+#'
+#' @param anno Annotation data frame for patch-seq
+#' @param dendcluster_anno what to cluster by
+#' @param groupvars what to group by
+#' @param scaleLimits scaleLimits
+#' @param scaleBreaks scaleBreaks
+#' @param scaleLabels scaleLabels
+#' @param ylab ylab
+#' @param fileName fileName
+#'
+#' @return the plot is returned
+#'
+#' @export
 qcPlot <- function(anno,name,scaleLimits = c(-5000, 12000), 
                      scaleBreaks = seq(0, 12000, 2000),
                      scaleLabels = seq(0,12,2),

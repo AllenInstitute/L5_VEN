@@ -1,5 +1,11 @@
-#' Read data from a directory of feather files
-#' 
+#' Read data from a directory of feather files. From library(scrattch.io)
+#'
+#' @param feather_dir Directory containing feather files.
+#' @param genes Genes to read
+#' @param group_by desc_bases to use for grouping samples
+#' @param group_ids ID values to use for filtering
+#'
+#' @export
 get_feather_data <- function(feather_dir, genes, group_by, group_ids) {
   
   library(dplyr)

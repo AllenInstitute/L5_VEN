@@ -1,6 +1,37 @@
 ######################################################################################
 # CLUSTER HEATMAPS
 
+#' Heatmap plots of group summary statistics.  THIS FUNCTION IS NOW IN library(scrattch.vis)
+#' 
+#' @param data A data frame containing gene expression values. The first column should be sample_name
+#' @param anno Sample annotations. The first column should be sample_name, and each annotation should have \_id, \_label, and \_color columns
+#' @param genes A character vector containing gene symbols to be plotted. 
+#' @param grouping A character vector specifying the desc base that should be used to group cells
+#' @param group_order Optional: Explicit specification of group order by supplying a vector of group_ids.
+#' @param stat The statistic to apply to each group. Options are: 
+#' \itemize{
+#'   \item "median"
+#'   \item "mean"
+#'   \item "tmean" (25\% trimmed mean)
+#'   \item "nzmean" (mean of non-zero values)
+#'   \item "nzmedian" (median of non-zero values)
+#'   \item "prop_gt0" (proportion of samples > 0)
+#'   \item "prop_gt1" (proportion of samples > 1)
+#'   \item "min"
+#'   \item "max"
+#'   }
+#' @param log_scale Logical , determines if data is log scaled before plotting. Default = FALSE.
+#' @param normalize_rows Logical, whether or not to rescale data within each row of the plot. Default = FALSE.
+#' @param font_size numeric object, the font size (in pts) used to make the plot.
+#' @param label_height numeric object, Percent of the plot height that should be used for the labels (0 to 100). Default is 25.
+#' @param show_counts Logical, whether or not to display sample counts at the top of labels. Default = TRUE.
+#' @param rotate_counts Logical, whether or not to rotate sample counts by 90 degrees. Default = FALSE.
+#' @param max_width numeric object, percent of plot width that should be used for maximum expression values (0 to 100). Default is 10.
+#' @param return_type What values to return - can be "plot", "data", or "both". Default is "plot".
+#' 
+#' @return a ggplot2 plot object
+#'
+#' @export
 group_heatmap_plot <- function (genes = c("Hspa8", "Snap25", "Gad2", "Vip"), clusters = 1:10, 
     group_by = "final", calculation = "mean", data_source = "internal", 
     normalize_rows = FALSE, logscale = T, fontsize = 7, labelheight = 25, 
@@ -138,6 +169,24 @@ group_heatmap_plot <- function (genes = c("Hspa8", "Snap25", "Gad2", "Vip"), clu
 ######################################################################################
 # CELL BY CELL HEATMAPS
 
+#' Heatmaps of gene expression for individual samples.   THIS FUNCTION IS NOW IN library(scrattch.vis)
+#' 
+#' @param data A data frame containing gene expression values. The first column should be sample_name
+#' @param anno Sample annotations. The first column should be sample_name, and each annotation should have \_id, \_label, and \_color columns
+#' @param genes A character vector containing gene symbols to be plotted. 
+#' @param grouping A character vector specifying the desc base that should be used to group cells
+#' @param group_order Optional: Explicit specification of group order by supplying a vector of group_ids.
+#' @param log_scale Logical , determines if data is log scaled before plotting. Default = FALSE.
+#' @param normalize_rows Logical, determines if heatmaps will be normalized for each gene. Default = FALSE.
+#' @param font_size numeric object, the font size (in pts) used to make the plot.
+#' @param label_height numeric object, Percent of the plot height that should be used for the labels (0 to 100). Default is 25.
+#' @param label_type Label shape, "angle" or "square"
+#' @param max_width numeric object, percent of plot width that should be used for maximum expression values (0 to 100). Default is 10.
+#' @param return_type What values to return - can be "plot", "data", or "both". Default is "plot".
+#' 
+#' @return a ggplot2 plot object
+#'
+#' @export
 sample_heatmap_plot <- function(data_source, 
                                 genes = c("Hspa8","Snap25","Gad2","Vip"), 
                                 group_by = "cluster", 
@@ -455,6 +504,11 @@ sample_heatmap_plot <- function(data_source,
 }
 
 
+#' This function builds a legend plot.  THIS FUNCTION IS NOW IN library(scrattch.vis)
+#' 
+#' @return a ggplot2 plot object
+#'
+#' @export
 build_legend_plot <- function(data_source, 
                               genes = c("Hspa8","Snap25","Gad2","Vip"), 
                               autorange = "auto", 
@@ -534,8 +588,10 @@ build_legend_plot <- function(data_source,
 ### FUNCTIONS FOR MAKING DOT PLOTS
 
 
-# Function to subset a dendrogram by retrieving a node with 
-# a given attribute.
+#' Function to subset a dendrogram by retrieving a node with a given attribute.
+#' 
+#' @return dendrogram subset
+#'
 get_node_dend <- function(x, match_attr, match_value) {
   
   output <- NULL
@@ -560,7 +616,18 @@ get_node_dend <- function(x, match_attr, match_value) {
   
 }
 
-# Function to subsample cells
+
+#' Subsample cells.  THIS FUNCTION IS IN library(mfishtools)
+#'
+#' Subsets a categorical vector to include up to a maximum number of values for each category.
+#'
+#' @param clusters vector of cluster labels (or any category) in factor or character format
+#' @param subSamp maximum number of values for each category to subsample
+#' @param seed for reproducibility
+#'
+#' @return returns a vector of TRUE / FALSE with a maximum of subSamp TRUE calls per category
+#'
+#' @export
 subsampleCells <- function(clustersF, subSamp=25, seed=5){
   # Returns a vector of TRUE false for choosing a maximum of subsamp cells in each cluster 
   # clustersF = vector of cluster labels in factor format
@@ -574,7 +641,15 @@ subsampleCells <- function(clustersF, subSamp=25, seed=5){
   return(kpSamp)
 }
 
-# Function to build the jittered layer plot + dendrogram
+
+
+#' Function to build the jittered layer plot + dendrogram. From library(tasic2018analysis)
+#' 
+#' 
+#' @return a ggplot2 plot object
+#'
+#' @export
+
 build_layer_plot <- function(anno,
                              dend,
                              cocl,

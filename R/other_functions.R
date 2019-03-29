@@ -1,13 +1,29 @@
+
+#' Function for getting the plotting genes (to avoid typing it out a bunch of times)
+#'
+#' @return gene vector
 formatPlotGenes <-function(plotGenes){
-  # Function for getting the plotting genes (to avoid typing it out a bunch of times)
   for (k in -sort(-grep("-",topGenesExc))){
     plotGenes=c(plotGenes[1:k],gsub("-","\\.",plotGenes[k]),plotGenes[(k+1):length(plotGenes)]) # Convert - to . for plotting
   }
   return(setdiff(plotGenes,"none"))
 } 
 
+
+#' Return the row max
+#' 
 rowMax <- function(x) return(apply(x,1,max))
 
+
+#' Returns the average color from a vector of colors
+#' 
+#' @param colorVector a vector of colors (hex or color names are all okay)
+#' @param scaleFactor How to scale.  Typically should be left at 2
+#' @param return_type How to weight each color in the vector
+#' 
+#' @return A hex color character
+#'
+#' @export
 mixColors <- function(colorVector, scaleFactor=2, weights=NULL){
   library(gplots)
   if(is.null(weights)) weights = rep(1,length(colorVector))
@@ -22,6 +38,15 @@ mixColors <- function(colorVector, scaleFactor=2, weights=NULL){
 }
 
 
+#' Feturns the summary gene expression value across a group
+#' 
+#' @param datExpr a matrix of data (rows=genes, columns=samples)
+#' @param groupVector character vector corresponding to the group (e.g., cell type)
+#' @param fn Summary function to use (default = mean)
+#' 
+#' @return Summary matrix (genes x groups)
+#'
+#' @export
 findFromGroups <- function(datExpr,groupVector,fn="mean"){
   groups   = names(table(groupVector))
   fn       = match.fun(fn)
@@ -35,7 +60,8 @@ findFromGroups <- function(datExpr,groupVector,fn="mean"){
   return(datMeans)
 }
 
-
+#' Adds an error bar
+#' 
 error.bar <- function(x, y, upper, lower=upper, length=0.1,...){
  if(length(x) != length(y) | length(y) !=length(lower) | length(lower) != length(upper))
  stop("vectors must be same length")
@@ -43,6 +69,8 @@ error.bar <- function(x, y, upper, lower=upper, length=0.1,...){
 }
 
 
+#' Plots and error bar
+#' 
 errorBarPlot <- function(vals,sampleType,col=standardColors(),legend=TRUE,elwd=2,ylim=NA,xlim=NA,length=0.1,...){
  if(is.null(dim(vals))) vals = cbind(vals,vals)
  yy <- t(findFromGroups(vals,sampleType))
@@ -54,6 +82,8 @@ errorBarPlot <- function(vals,sampleType,col=standardColors(),legend=TRUE,elwd=2
  error.bar(barx,yy,ee,lwd=elwd,length=length)
 }
 
+#' Conversion between mouse and human gene names (not used)
+#'
 mouse2human2 <- function (mouse, m2h){
  # Convert mouse to human symbols
  rownames(m2h) = m2h$Mou
@@ -64,6 +94,8 @@ mouse2human2 <- function (mouse, m2h){
  return(mouse)
 }
 
+#' t.test wrapper for use with the "apply" function
+#'
 t.test.l <- function(x){
   l  = length(x)
   tt = t.test(x[1:(l/2)],x[(l/2+1):l],paired=FALSE)
@@ -73,6 +105,8 @@ t.test.l <- function(x){
   return(out)
 }
 
+#' ANOVA for use with the apply function
+#'
 getAnovaPvalforApply <- function(x,varLabels,varWeights=NULL){
   anovadat  = as.data.frame(cbind(varLabels,x))
   aov.out   = summary(aov(as.numeric(anovadat[,2])~anovadat[,1],data=anovadat,weights=varWeights))  
@@ -80,10 +114,13 @@ getAnovaPvalforApply <- function(x,varLabels,varWeights=NULL){
 }
 
 
-
+#' Mean expression
+#'
 meanEx <- function(x) {if(sum(x)==0) return(0); return(mean(x[x>0]));}
 
 
+#' Paired t.test wrapper for use with the "apply" function
+#'
 t.test.l.paired <- function(x){
   l  = length(x)
   tt = t.test(x[1:(l/2)],x[(l/2+1):l],paired=TRUE)
@@ -93,7 +130,16 @@ t.test.l.paired <- function(x){
   return(out)
 }
 
-  
+#' Calculates the beta score
+#' 
+#' This score is a marker score that is a combination of specificity and sparsity
+#' 
+#' @param y a numeric vector (typically corresponding to cluster proportions)
+#' @param spec.exp should be left at default value of 2
+#' 
+#' @return beta score
+#' 
+#' @export
 calc_beta <- function(y, spec.exp = 2) {
   d1 <- as.matrix(dist(y))
   eps1 <- 1e-10
@@ -107,6 +153,8 @@ calc_beta <- function(y, spec.exp = 2) {
 #####################################################################
 # FUNCTIONS FOR BUILDING AND PLOTTING THE TREE ARE BELOW
 
+#' Builds a clustering tree
+#' 
 getDend <- function(input,distFun = function(x) return(as.dist(1-cor(x)))){
  distCor  = distFun(input) 
  avgClust = hclust(distCor,method="average")
@@ -114,6 +162,8 @@ getDend <- function(input,distFun = function(x) return(as.dist(1-cor(x)))){
  dend = labelDend(dend)[[1]]
 }
 
+#' Labels a clustering tree
+#' 
 labelDend <- function(dend,n=1)
   {  
     if(is.null(attr(dend,"label"))){
@@ -130,6 +180,9 @@ labelDend <- function(dend,n=1)
     return(list(dend, n))
   }
 
+#' Reorders a clustering tree.  Function from library(scrattch.hicat)
+#' 
+#' @export
 reorder.dend <- function(dend, l.rank,verbose=FALSE)
   {
     tmp.dend = dend
@@ -156,7 +209,11 @@ reorder.dend <- function(dend, l.rank,verbose=FALSE)
   }
 
   
-  
+#' Function for updating and ordering clusters based on meta-data
+#' 
+#' See renameAndOrderClusters in library(scrattch.hicat)
+#' 
+#' @export  
 updateAndOrderClusters <- function(sampleInfo, # Subsetted Samp.dat file for samples from non-outlier clusters
   classNameColumn = "cluster_type_label", # Will also be added to kpColumns (this is inh vs. exc. vs. glia)
   layerNameColumn = "layer_label",    # Where is the layer info stored (NULL if none)
@@ -269,7 +326,8 @@ updateAndOrderClusters <- function(sampleInfo, # Subsetted Samp.dat file for sam
 }
 
 
-# NO NEED TO USE THIS ONE.  SAME AS BELOW, BUT MUCH SLOWER.
+#' Function for getting top marker genes
+#' 
 getTopMarkersByPropNew <- function(propExpr, medianExpr, propDiff = 0, propMin=0.5, medianFC = 1, 
   excludeGenes = NULL, sortByMedian=TRUE){
   specGenes = rep("none",dim(propExpr)[2])
@@ -297,11 +355,12 @@ getTopMarkersByPropNew <- function(propExpr, medianExpr, propDiff = 0, propMin=0
   return(specGenes)
 }
 
-#newCluster10 = renameClusters(sampleInfo,clusterInfo, propExpr[keepGenes,], medianExpr[keepGenes,], 
-#    propDiff = 0, propMin=0.5, medianFC = 1, propLayer=0.1,excludeGenes = excludeGenes,
-#	majorGenes=majorGenes, majorLabels=majorLabels, broadGenes=broadGenes)
-	
 
+#' Another function for renaming clusters based on data and meta-data
+#' 
+#' See renameAndOrderClusters in library(scrattch.hicat)
+#' 
+#' @export 
 renameClusters <- function(sampleInfo,clusterInfo, propExpr, medianExpr, propDiff = 0, propMin=0.5, medianFC = 1, 
                            excludeGenes = NULL, majorGenes=c("GAD1","SLC17A7","SLC1A3"), majorLabels= majorGenes, 
 						   broadGenes = majorGenes, propLayer=0.3, layerNameColumn="layer_label", 
@@ -377,8 +436,13 @@ renameClusters <- function(sampleInfo,clusterInfo, propExpr, medianExpr, propDif
 }
 
 
+#' Function for getting top marker genes
+#' 
 getTopMarkersByProp <- function(...) suppressWarnings(getTopMarkersByProp2(...)) # Warnings are not useful from this function
 
+
+#' Function for getting top marker genes
+#' 
 getTopMarkersByProp2 <- function(propExpr,n=1,excludeGenes = NULL,medianExpr=NA,fcThresh=0.5,minProp=0){
  prop   = propExpr[!is.element(rownames(propExpr),excludeGenes),]
  cn     = colnames(prop)
@@ -416,7 +480,8 @@ getTopMarkersByProp2 <- function(propExpr,n=1,excludeGenes = NULL,medianExpr=NA,
 }
 
 
-
+#' Update the sample data
+#' 
 updateSampDat <- function(Samp.dat,clusterInfo){
   lab = as.character(Samp.dat$cluster_label)
   id  = as.numeric(Samp.dat$cluster_id)
@@ -429,24 +494,17 @@ updateSampDat <- function(Samp.dat,clusterInfo){
 }
 
 
-# Function to subsample cells
-subsampleCells <- function(clustersF, subSamp=25, seed=5){
-  # Returns a vector of TRUE false for choosing a maximum of subsamp cells in each cluster 
-  # clustersF = vector of cluster labels in factor format
-  kpSamp = rep(FALSE,length(clustersF))
-  for (cli in unique(as.character(clustersF))){
-    set.seed(seed)
-    seed   = seed+1
-    kp     = which(clustersF==cli)
-    kpSamp[kp[sample(1:length(kp),min(length(kp),subSamp))]] = TRUE
-  }
-  return(kpSamp)
-}
-
-
+#' Wrapper for calc_beta
+#' 
+#' @param propExpr proportions of cells in a given cluster with CPM/FPKM > 1 (or 0, HCT uses 1)
+#' @param returnScore TRUE returns scores, FALSE results ranks
+#' @param spec.exp do not change from default (2)
+#' 
+#' @return a vector of beta scores
+#' 
+#' @export
 getBetaScore <- function(propExpr,returnScore=TRUE,spec.exp = 2){
-  # Wrapper for calc_beta
-  # propExpr = proportions of cells in a given cluster with CPM/FPKM > 1 (or 0, HCT uses 1)
+
   betaScore <- apply(propExpr, 1, calc_beta)
   betaScore[is.na(betaScore)] <- 0
   if(returnScore) return(betaScore)
@@ -454,15 +512,23 @@ getBetaScore <- function(propExpr,returnScore=TRUE,spec.exp = 2){
   return(scoreRank)
 }
 
+#' Wrapper for plot_dend
+#'
 rankCompleteDendPlot <- function(input=NULL,l.rank=NULL,dend=NULL,label_color=NULL,node_size=3,
     main="Tree",distFun = function(x) return(dist(1-(1+cor(x))/2)),...){
  if(is.null(dend)) dend = getRankedDend(input,l.rank,distFun)
  plot_dend(dend,node_size=node_size,label_color=label_color,main=main)
 }
 
-# Allows plot_dend to work properly in a for loop
+
+#' Allows plot_dend to work properly in a for loop.
+#' 
 plot_dend <- function(...) print(plot_dend2(...))
   
+
+#' Plots the dendrogram in a convenient format.  From  library (scrattch.hicat)
+#'
+#' @export
 plot_dend2 <- function(dend, dendro_data=NULL,node_size=1,r=NULL,label_color=NULL,main="",rMin=-0.6)  # r=c(-0.1,1)
   {
     require(dendextend)
@@ -496,6 +562,18 @@ plot_dend2 <- function(dend, dendro_data=NULL,node_size=1,r=NULL,label_color=NUL
   }
 
 
+#' Compare two cluster sets matched to CCA.  From library(patchseqtools)
+#'
+#' This function takes cluster calls defined in two different data sets and then
+#' determines to what extent these cluster calls match up with cluster calls from CCA.
+#'
+#' @param cl a matrix (rows=genes x columns=samples) of gene expression data
+#'   (e.g., scRNA-seq)
+#' @param by.rows By rows (TRUE; default) or by columns
+#'
+#' @return a reordered matrix
+#'
+#' @export
 compareClusterCalls <- function (cl, ref.cl, cl.anno, plot.title = NA, plot.silent = TRUE, 
     heat.colors = colorRampPalette(c("grey99", "orange", "red"))(100), fontsize = 6,
     row.cl.num = min(length(unique(cl)), length(unique(ref.cl))),...) 
@@ -518,6 +596,18 @@ compareClusterCalls <- function (cl, ref.cl, cl.anno, plot.title = NA, plot.sile
     return(list(conf = conf2, cocl = cl.prop.cocl.m, ph = ph1))
 }
 
+
+#' Reorder a matrix.  From library(patchseqtools)
+#'
+#' This function reorders a matrix by rows of columns
+#'
+#' @param matrix1 a matrix (rows=genes x columns=samples) of gene expression data
+#'   (e.g., scRNA-seq)
+#' @param by.rows By rows (TRUE; default) or by columns
+#'
+#' @return a reordered matrix
+#'
+#' @export
 reorder_matrix <- function (matrix1, by.rows = TRUE) 
 {
     if (by.rows == TRUE) {
