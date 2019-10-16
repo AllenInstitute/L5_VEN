@@ -121,7 +121,6 @@ FindNeighbors.Seurat <- function(
   graph.name = NULL,
   ...
 ) {
-  library(Seurat)
   if (!is.null(x = dims)) {
     assay <- assay %||% DefaultAssay(object = object)
     data.use <- Embeddings(object = object[[reduction]])
@@ -129,7 +128,7 @@ FindNeighbors.Seurat <- function(
       stop("More dimensions specified in dims than have been computed")
     }
     data.use <- data.use[, dims]
-    neighbor.graphs <- FindNeighbors(
+    neighbor.graphs <- Seurat::FindNeighbors(
       object = data.use,
       k.param = k.param,
       compute.SNN = compute.SNN,
@@ -141,7 +140,7 @@ FindNeighbors.Seurat <- function(
   } else {
     assay <- assay %||% DefaultAssay(object = object)
     data.use <- GetAssay(object = object, assay = assay)
-    neighbor.graphs <- FindNeighbors(
+    neighbor.graphs <- Seurat::FindNeighbors(
       object = data.use,
       features = features,
       k.param = k.param,
