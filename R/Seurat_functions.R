@@ -121,6 +121,7 @@ FindNeighbors.Seurat <- function(
   graph.name = NULL,
   ...
 ) {
+  library(Seurat)
   if (!is.null(x = dims)) {
     assay <- assay %||% DefaultAssay(object = object)
     data.use <- Embeddings(object = object[[reduction]])
