@@ -181,3 +181,5 @@ FindNeighbors.Seurat <- function(
   object <- LogSeuratCommand(object = object)
   return(object)
 }
+
+FindNeighbors <- Seurat::FindNeighbors
