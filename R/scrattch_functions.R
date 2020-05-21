@@ -289,7 +289,7 @@ annotate_factor <- function (df, col = NULL, base = NULL, na_val = "ZZ_Missing",
     annotations <- dplyr::mutate(annotations, color = colors)
     names(annotations) <- paste0(base, c("_label", "_id", "_color"))
     names(df)[names(df) == col] <- paste0(base, "_label")
-    df[[col]] <- as.character(df[[col]])
+    df[[paste0(col,"_label")]] <- as.character(df[[paste0(col,"_label")]]) # convert the factor to a character in the anno
     df <- dplyr::left_join(df, annotations, by = paste0(base, 
         "_label"))
     df
