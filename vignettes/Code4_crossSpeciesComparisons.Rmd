@@ -216,7 +216,7 @@ heatmap.2(compare, dendrogram="row", trace="none", Colv=FALSE, margins = c(5, 15
 Rename clusters accordingly.  
   
 ```{r rename clusters}
-cellClasses <- c("3. L5 IT","2. L4* IT","1. L2/3 IT","4. L6 IT","8. NP","7. L6b","5. L5 CF","6. L6 CT")
+cellClasses <- c("3. L5 IT","2. L4* IT","1. L2/3 IT","4. L6 IT","8. NP","7. L6b","5. L5 PT","6. L6 CT")
 names(cellClasses) <- colnames(compare)
 brain.integrated@meta.data$className <- cellClasses[brain.integrated@meta.data$clusterCall]  
 ```   
@@ -251,7 +251,7 @@ cl.conf$ph # NOTE, this only displays to the screen if you copy and paste into t
 ```  
   
   
-Visualize the data in UMAP space.  **NOTE: The UMAP projection output using Windows (or other R/python configurations) may not agree with the UMAP projection shown here; however the cells assigned to each cluster (and thus all downstream analysis) will be identical.**  
+Plot the data in UMAP space.  
   
 ```{r plot UMAP, fig.height=6,fig.width=14}
 p1 <- DimPlot(object = brain.integrated, group.by = "set", reduction = "umap", 
@@ -346,8 +346,252 @@ dev.off()
 ```
   
   
+### Alternate strategies of identifying DEX genes in each data set
+  
+In additional to making nice plots, we also would like to know how many (and which) genes are good markers for each subtype in each data set.  This will allow us to ask a few relevant questions.  Given the morphological diversity of the ET cluster in FI, do we find some comparable measure of transcriptomic diversity?  For example, does this type have more marker genes than other types?  Is the transcriptional profile particularly different in FI?  Is it more distinct as compared with other the other cell types?  The next couple of analyses provided different strategies for assessing differential expression between subtypes.  
+  
+Top marker genes for each type using the built in `FindMarkers` function in Seurat.  
+
+  
+```{r de genes Seurat}
+nSub     <- 1000
+iters    <- 1
+numOkay  <- 1
+tests    <- c ("bimod")
+csMarks  <- list()
+samples  <- names(brain.integrated$className)
+
+for (ct in levels(brain.integrated)){
+  for (set in sort(unique(brain.integrated$set))){
+    mark = NULL
+    for (i in 1:iters){
+      test.use <- tests[(i %% length(tests))+1]
+      class <- brain.integrated$className
+      class[brain.integrated$set != set] = "no"
+      set.seed(1); 
+      subs2 <- nSub
+      kpSam <- samples[subsampleCells(class,subs2,seed = i)&(class!="no")]
+      brTmp <- subset(brain.integrated,cells=kpSam)
+      out   <- FindMarkers(brTmp, ident.1 = ct, verbose=0, min.pct = 0.5, 
+                           only.pos=TRUE, test.use=test.use, assay = "RNA")
+      mark  <- c(mark, rownames(out))
+    }
+    tab <- table(mark)
+    csMarks[[ct]][[set]] <- sort(names(tab)[tab>=numOkay])
+  }
+}
+names(csMarks) <- as.character(cellClasses[levels(brain.integrated)])
+csMarks <- csMarks[colnames(avg[[1]])]
+```  
+  
+  
+```{r how many matching genes}
+out <- matrix(0, nrow=length(colnames(avg[[1]])),ncol=length(mains))
+colnames(out) <- sort(unique(brain.integrated$set))
+rownames(out) <- colnames(avg[[1]])
+
+for (i in cellClasses) {
+  print(i)
+  print(table(table(c(csMarks[[i]][[1]],csMarks[[i]][[2]],csMarks[[i]][[3]],csMarks[[i]][[4]]))))
+  print("-------------------------")
+  print(" ")
+  for (j in sort(unique(brain.integrated$set))){
+    out[i,j] <- length(csMarks[[i]][[j]])
+  }
+}
+out
+```    
+  
+We find that the distinct types in the UMAP have the most distinct markers based on Seurat, which makes sense.  By this measure there are more ET-associated genes in MTG than FI.  Note that this method is looking at gene expression in ET as compared with the average of all other types and may not be finding the most selective genes.  
+  
+To account for the differences in scales of these data sets, we will look for genes defined as DEX using ranks rather than absolute expression levels, and we will subsample each subtype to the same number of cells multiple times.  As such, this analysis is comparing the difference in ranked average expression values rather than any absolute measure of expression.  
+  
+```{r dex gene analysis3 }
+ranks <- scales <- list()
+for (i in 1:4) {
+  scales[[i]] <- avg[[i]]/(apply(avg[[i]],1,mean)+0.00000001)
+  ranks[[i]]  <- apply(-scales[[i]],2,rank,ties.method="first")
+  ranks[[i]][ranks[[i]]>7219] <- 7220  # 50% of all genes
+  ranks[[i]]  <- 7219-ranks[[i]]
+}
+
+dexs <- list()
+for (i in 1:4) {
+  dexs[[i]] <- ranks[[i]]*0
+  for (j in 1:dim(ranks[[i]])[2]){
+    dexs[[i]][,j] <- ranks[[i]][,j] - apply(ranks[[i]][,-j],1,max)
+  }
+  dexs[[i]] <- pmax(dexs[[i]],0)
+}
+
+mcpm = 5
+rdex = 3609.5  # 25% of all genes
+out <- NULL
+for (i in 1:4){
+  out <- rbind(out,colSums((dexs[[i]]>rdex)&(avg[[i]]>=mcpm)))
+}
+rownames(out) <- mains
+mouse_common <- (colSums((((dexs[[1]]>rdex)&(avg[[1]]>=mcpm))+
+               ((dexs[[2]]>rdex)&(avg[[2]]>=mcpm)))==2))
+human_common <- (colSums((((dexs[[3]]>rdex)&(avg[[3]]>=mcpm))+
+               ((dexs[[4]]>rdex)&(avg[[4]]>=mcpm)))==2))
+out <- rbind(out,mouse_common,human_common)
+out
+```
+
+While the specific counts differ, the same results hold here, with many ET markers in all data sets, and the most in MTG.  
+  
+Next, let's directly look for markers of the ET subclasses using the method to be described in the next code documents.  The details don't matter here other than that it also looks at the proportion of cells expressed in each class.  
+  
+```{r identify top CF genes}
+meanFI   <- log2(avg[[3]]+1)
+meanMTG  <- log2(avg[[4]]+1)
+
+## proportions
+exprThresh <- 1
+propFI   <- do.call("cbind", tapply(names(ctFI), ctFI, function(x) rowMeans(datFI[,x]>exprThresh))) 
+propMTG  <- do.call("cbind", tapply(names(ctMTG), ctMTG, function(x) rowMeans(datMTG[,x]>exprThresh))) 
+colnames(propFI) <- colnames(propMTG) <- cellClasses
+propFI   <- propFI[,colnames(meanFI)]
+propMTG  <- propMTG[,colnames(meanMTG)]
+
+# FI dex
+pti     <- 5
+wme <- apply(meanFI,1,which.max)
+fce <- apply(meanFI,1,function(x) diff(range(-sort(-x)[1:2])))
+VEe <- apply(meanFI,1,function(x) x[pti]-mean(x[c(1:(pti-1),(pti+1):length(x))]))
+p2e <- apply(propFI,1,function(x) -sort(-x)[2])
+p1e <- apply(propFI,1,max)
+pce <- p1e-p2e
+
+topVENgeneFI <- names(fce)[(fce>1)&(wme==pti)&(pce>0.25)&(p1e>0.5)&(p2e<0.5)]
+topVENgeneFI <- topVENgeneFI[order(-fce[(topVENgeneFI)])]
+
+# MTG dex
+ptib     <- 5
+wmeb <- apply(meanMTG,1,which.max)
+fce <- apply(meanMTG,1,function(x) diff(range(-sort(-x)[1:2])))
+VEe <- apply(meanMTG,1,function(x) x[ptib]-mean(x[c(1:(ptib-1),(ptib+1):length(x))]))
+p2e <- apply(propMTG,1,function(x) -sort(-x)[2])
+p1e <- apply(propMTG,1,max)
+pme <- apply(propMTG,1,mean)
+pce <- p1e-p2e
+
+topVENgeneMTG <- names(fce)[(fce>1)&(wmeb==ptib)&(pce>0.25)&(p1e>0.5)&(p2e<0.5)]
+topVENgeneMTG <- topVENgeneMTG[order(-fce[(topVENgeneMTG)])]
+
+print(paste(length(topVENgeneFI),"FI genes in the ET cluster."))
+print(paste(length(topVENgeneMTG),"MTG genes in the ET cluster."))
+print(paste(length(intersect(topVENgeneFI,topVENgeneMTG)),"genes in the ET cluster common to both regions."))
+```
+  
+We find roughly the same number of genes and the same result here as with the previous two methods.  
+  
+  
+### Identify differentially expressed genes between data sets
+  
+In addition to identifying common genes, we also want to know how gene expression patterns of different clusters diverge between data sets.  One goal of this is to see whether the ET type diverges more betwen data sets, and if so, whether FI (which should contain VENs) shows the biggest gene gain.  To do so, we perform Spearman correlation of cluster medians across each pair of data sets.  Cell types with lower correlation would have more differential expression.  This method allows us to properly control for technical differences in a way that is not possible by directly identifying specific genes.  
+  
+First, we calculate the subtype medians.  To account for the different number of cells in each subtype, we subsample equally from each subtype 10 times and then find the average and range of correlations at the end.  
+  
+```{r dex gene analysis 4b }
+## Use cell type calls from Seurat as the subclass labels
+ctVISp <- brain.integrated@active.ident[colnames(datVISp)]
+ctALM  <- brain.integrated@active.ident[colnames(datALM)]
+ctFI   <- brain.integrated@active.ident[colnames(datFI)]
+ctMTG  <- brain.integrated@active.ident[colnames(datMTG)]
+cts    <- list(ctVISp,ctALM,ctFI,ctMTG)
+
+## Calculate median expression and marker genes within a data set
+dats <- list(datVISp,datALM,datFI,datMTG) # log2 space
+meds <- list() # CLUSTER MEDIANS
+iter <- 10
+subs <- 10
+
+for (seed in 1:iter){
+  meds[[seed]] <- list()
+  for (i in 1:4){
+    kp <- subsampleCells(cts[[i]],subs,seed=seed)
+    meds[[seed]][[i]] <- do.call("cbind", tapply(names(cts[[i]])[kp], cts[[i]][kp], function(x) apply(dats[[i]][,kp][,x],1,median))) 
+    meds[[seed]][[i]] <- meds[[seed]][[i]][,names(sort(cellClasses))]
+    colnames(meds[[seed]][[i]]) <- as.character(sort(cellClasses))
+  }
+}
+``` 
+  
+  
+Next, we calculate and output the average correlations (as well as the range).  
+  
+```{r dex gene analysis 4c }
+## Calculate and output the results for correlation (e.g., differential marker genes)
+corsL <- list()
+for (seed in 1:iter){
+  cors <- rn <- NULL
+  nm <- c("VISp","ALM","FI","MTG")
+  for (i in 2:4) for (j in 1:(i-1)){
+    kp <- rowSums(pmax(meds[[seed]][[i]],meds[[seed]][[j]]))>=0
+    rn <- c(rn,paste(nm[i],"|",nm[j]))
+    corTmp <- NULL
+    for (k in 1:dim(meds[[seed]][[i]])[2]){
+      # kp <- pmax(meds[[seed]][[i]][,k],meds[[seed]][[j]][,k])>0
+      corTmp <- c(corTmp,cor(meds[[seed]][[i]][kp,k],meds[[seed]][[j]][kp,k],method="s"))
+    }
+    names(corTmp)<-colnames(meds[[seed]][[i]])
+    cors <- rbind(cors,corTmp)
+  }
+  rownames(cors) <- rn
+  average <- colMeans(cors)
+  cors <- rbind(cors,average)
+  corsL[[seed]] <- cors
+}
+
+corsAvg <- corsMin <- corsMax <- corsL[[1]]
+for(seed in 2:iter){
+  corsAvg <- corsAvg + corsL[[seed]]
+  corsMin <- pmin(corsMin, corsL[[seed]])
+  corsMax <- pmax(corsMax, corsL[[seed]])
+}
+
+round(100000*corsAvg/length(iter))/1000000
+round(1000000*corsMax-1000000*corsMin)/1000000
+```  
+
+We find that the ET subtype has the highest correlation between each pair of data sets, suggesting that this type does not diverge dramatically in human FI.  This cannot be explained by the transcriptionally distinctness of the ET subtype as the NP subtype (which also has many common marker genes) has the lowest correlation between almost all pairs of sets.  The L4* IT type also has low correlation between data sets, consistent with expectations since FI and ALM don't contain a layer 4, while VISp and MTG do.  Together these results suggest that the distinctness of ET types is captured transcriptomically more than any species or regional differences due to morphological specialization. 
+  
+  
+### Correlation based mapping of human FI to mouse  
+  
+As a complementary method to Seurat we will perform a simple, correlation-based mapping of human FI to mouse VISp and ALM to assess whether human and mouse ET cells align when using a less sophisticated method.  The basic idea is to scale the mouse and human data to match, and then compare each human cell to the cluster means of each mouse cell types using the genes most highly enriched or depleted in the mouse ET clusters.  
+  
+```{r correlation mapping}
+# Calculate means and ordered PT genes in mouse
+meanALM  <- findFromGroups(t(datALM),annoALM$subclass_label,mean)
+meanVISp <- findFromGroups(t(datVISp),annoVISp$subclass_label,mean)
+kpGn     <- (rowSums(meanALM)>0)&(rowSums(meanVISp)>0)&(rowSums(datFI)>0)
+inetALM  <- meanALM[kpGn,"L5 PT"] - rowMeans(meanALM[kpGn,])
+inetVISp <- meanVISp[kpGn,"L5 PT"] - rowMeans(meanVISp[kpGn,])
+
+# Calculate top correlated types using these genes and check how many map to PT
+for (nGenes in c(75,100,150,250,550)){
+ gnALM    <- names(c(head(sort(inetALM),nGenes),head(sort(-inetALM),nGenes)))
+ corALM   <- cor(datFI[gnALM,]/apply(datFI[gnALM,],1,max),meanALM[gnALM,]/apply(meanALM[gnALM,],1,max))
+ mapALM   <- colnames(meanALM)[apply(corALM,1,which.max)] 
+
+ gnVISp   <- names(c(head(sort(inetVISp),nGenes),head(sort(-inetVISp),nGenes)))
+ corVISp  <- cor(datFI[gnVISp,]/apply(datFI[gnVISp,],1,max),meanVISp[gnVISp,]/apply(meanVISp[gnVISp,],1,max))
+ mapVISp  <- colnames(meanVISp)[apply(corVISp,1,which.max)]
+
+ print(paste("Using",nGenes,"genes:"))
+ print(table(mapALM=="L5 PT",mapVISp=="L5 PT",annoFI$cluster_label=="Exc FEZF2 GABRQ"))
+}
+```  
+  
+Using different numbers of DEX genes, we find that all 23 ET cells are most highly correlated with the mouse PT clusters for both VISp and ALM.  A few additional cells from other clusters also map to the ET cluster in ALM, but the mapping in VISp is perfectly consistent with our clustering and with the Seurat mapping.  It is important to note that this method is only confirmatory; Seurat (or one of the other related alignment strategies) are more robust for whole data set mapping.
+  
+  
 Output session information.  
   
 ```{r sessionInfo}
 sessionInfo()
-```    
+```      
+  

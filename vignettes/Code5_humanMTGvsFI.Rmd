@@ -11,9 +11,9 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Overview
 
-This script identifies common and distinct CF-associated genes in human middle temporal gyrus as compared with human fronto-insula, and compares the proportions of cells across clusters for each brain region.  
+This script identifies common and distinct ET-associated genes in human middle temporal gyrus as compared with human fronto-insula, and compares the proportions of cells across clusters for each brain region.  
   
-If needed, set the working directory first: e.g. `setwd("C:/Users/jeremym/Desktop/VEN_TEST")`.  
+If needed, set the working directory first: e.g. `setwd("C:/Users/jeremym/Desktop/VEN_TEST2")`.  
   
 ### Load the relevant libraries
 
@@ -61,7 +61,7 @@ rownames(datMTG) <- annoMTG$sample_id
 datMTG    <- t(datMTG)
 datMTG    <- log2(datMTG+1)
 
-data("clusterInfoMTG.RData")
+data("clusterInfoMTG")
 infoMTG   <- clusterInfoMTG
 ```
   
@@ -75,14 +75,15 @@ datFI   <- datFI[kpGenes,]
 ```
   
  
-### Find common and distict CF-associated genes in FI and MTG
+### Find common and distict ET-associated genes in FI and MTG
   
-We have already shown in the previous code that a handful of genes are enriched in CF cells relative to other subclasses in multiple regions in mouse and human.  Now we want to extend this result to see if we can find an expanded list when we only consider human, and also to identify genes which may be specific to FI (and therefore potentially associated with diversified morphologies).
+We have already shown in the previous code that a handful of genes are enriched in ET cells relative to other subclasses in multiple regions in mouse and human.  Now we want to extend this result to see if we can find an expanded list when we only consider human, and also to identify genes which may be specific to FI (and therefore potentially associated with diversified morphologies).
   
 As a first step we need to calculate some statistics on these clusters, including means and proportions.  
   
 ```{r calculate statistics}
 ## FI statistics
+exprThresh  <- 1
 clFI        <- annoFI$cluster_label
 names(clFI) <- colnames(datFI)
 propFI      <- do.call("cbind", tapply(names(clFI), clFI, function(x) rowMeans(datFI[,x]>exprThresh))) 
@@ -92,7 +93,6 @@ propFI      <- propFI[,infoFI$cluster_label]
 meanFI      <- meanFI[,infoFI$cluster_label]
 
 ## MTG statistics
-exprThresh  <- 1
 clMTG       <- annoMTG$cluster_label
 names(clMTG)<- colnames(datMTG)
 propMTG     <- do.call("cbind", tapply(names(clMTG), clMTG, function(x) rowMeans(datMTG[,x]>exprThresh))) 
@@ -103,9 +103,9 @@ meanMTG     <- meanMTG[,infoMTG$cluster_label]
 ```
   
   
-Next, find the top marker genes for the CF cluster in each data set (Exc FEZF2 GABRQ in FI and Exc L4-5 FEZF2 SCN4B in MTG).  Note that we are using slightly different statistical criteria and comparison types as we did in the cross-species analysis, and therefore the resulting gene lists do not perfectly align.
+Next, find the top marker genes for the ET cluster in each data set (Exc FEZF2 GABRQ in FI and Exc L4-5 FEZF2 SCN4B in MTG).  Note that we are using slightly different statistical criteria and comparison types as we did in the cross-species analysis, and therefore the resulting gene lists do not perfectly align.
   
-```{r identify top CF genes}
+```{r identify top ET genes}
 # FI data
 exc_cl  <- substr(colnames(meanFI),1,3)=="Exc"
 pti     <- which(colnames(meanFI[,exc_cl])=="Exc FEZF2 GABRQ")
@@ -130,16 +130,26 @@ p1e <- apply(propMTG[,exc_clb],1,max)
 pme <- apply(propMTG[,exc_clb],1,mean)
 pce <- p1e-p2e
 
-topVENgeneMTG <- names(fce)[(fce>1)&(wmeb==ptib)&(pce>0.25)&(p1e>0.5)&(p2e<0.5)&(propFI[,exc_cl][,pti]<0.3)]
+topVENgeneMTG <- names(fce)[(fce>1)&(wmeb==ptib)&(pce>0.25)&(p1e>0.5)&(p2e<0.5)]
 topVENgeneMTG <- topVENgeneMTG[order(-fce[(topVENgeneMTG)])]
 ```  
   
   
-Finally, let's order and plot these genes in both FI and MTG.  Note that these plots are in log scale, whereas the rest of the manuscript is in linear scale. These genes are ordered by the average fold change between expression and proportions in the CF cluster vs. other excitatory clusters in MTG.  MTG first.
+How many FI and MTG genes do we find?  Note that we are biasing our plot toward showing all FI genes, but only the BEST MTG genes.  
+  
+```{r gene count}
+print(paste(length(topVENgeneFI),"FI genes in the ET cluster."))
+print(paste(length(topVENgeneMTG),"MTG genes in the ET cluster."))
+print(paste(length(intersect(topVENgeneFI,topVENgeneMTG)),"genes in the ET cluster common to both regions."))
+```
+  
+As with the subclass analysis in the previous code document, we find more ET markers in MTG than in FI, although the specific numbers differe because here we are looking at finer cluster resolution than in the previous code document.  
+  
+Finally, let's order and plot these genes in both FI and MTG.  Note that these plots are in log scale, whereas the rest of the manuscript is in linear scale. These genes are ordered by the average fold change between expression and proportions in the ET cluster vs. other excitatory clusters in MTG.  MTG first.
   
 ```{r plot top genes in MTG, fig.width=9,fig.height=12}
 ord  <- order(-((p1e-pme)*VEe)[topVENgeneFI])
-topVENgeneOut <- unique(c(topVENgeneFI[ord],topVENgeneMTG))
+topVENgeneOut <- unique(c(topVENgeneFI[ord],intersect(topVENgeneMTG,names(fce)[(propFI[,exc_cl][,pti]<0.3)])))
 topVENgeneOut <- intersect(topVENgeneOut,rownames(meanFI))
 topVENgeneOut <- intersect(topVENgeneOut,rownames(meanMTG))
 
@@ -156,11 +166,12 @@ ggsave("Fig4_FI_violinPlots_VENgenes.pdf", width = 5, height = 12)
 ```
   
   
-### CF cell proportions
+### ET cell proportions
   
-Here we calculate the fraction of excitatory cells from layer 5 that map to the CF clusters in MTG and FI.
+Here we calculate the fraction of excitatory cells from layer 5 that map to the ET clusters in MTG and FI.
     
 ```{r proportions}
+clusterFI <- annoFI$cluster_label
 isPT_FI   <- clusterFI=="Exc FEZF2 GABRQ"
 isExc_FI  <- substr(clusterFI,1,3)=="Exc"
 clusterMTG<- annoMTG$cluster_label
@@ -171,7 +182,7 @@ names(props) <- c("MTG","FI")
 signif(props,3)
 ```    
   
-Note that there is a much higher percentage of CF-associated excitatory cells in FI than in MTG.  These values are also consistent with results from ISH.  
+Note that there is a much higher percentage of ET-associated excitatory cells in FI than in MTG.  These values are also consistent with results from ISH.  
   
 Output session information.  
   

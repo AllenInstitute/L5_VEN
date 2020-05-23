@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Overview
 
-This script reads in the data output to the feather file and uses it to calculate and plot some QC information for Supplementary figure 1.  
+This script reads in the data output to the feather file and uses it to calculate and plot some QC information for Supplementary figure 1.  It also performs a reclustering of excitatory cells to show that the PT (now called ET) cluster does not get split into further clusters using less stringent parameters.  
   
 If needed, set the working directory first: e.g., `setwd("C:/Users/jeremym/Desktop/VEN_TEST")`.  
   
@@ -26,6 +26,8 @@ suppressPackageStartupMessages({
   library(dplyr)
   library(ggplot2)
   library(ggbeeswarm)
+  library(scrattch.hicat)
+  library(Rtsne)
 })
 options(stringsAsFactors=FALSE)
 ```
@@ -164,6 +166,103 @@ dev.off()
   
 Most cell types have a relatively even distribution in the two donors, after you scale for the number of cells from each class.  
 
+  
+# Recluster excitatory cells.  
+  
+Since the primary focus of this manuscript is the Exc FEZF2 GABRQ cluster, we want check that this cannot be further divided into subclusters *with the available resolution of the current data set, and using reasonably statistically sound methods*.  To do so, we first adjust our `scrattch.hicat` clustering pipeline to use parameters that are much more lenient that recommended and repeat the clustering and see how the results change.  
+  
+```{r recluster}
+isExc  <- is.element(Samp.dat$cluster_type_label,"exc")
+datFI  <- log2(datIn[,isExc]+1)
+datFI  <- datFI[rowSums(datFI)>=1,]
+annoFI <- Samp.dat[isExc,] 
+
+de.param <- de_param(padj.th     = 0.1, # 0.05, # Recommended or default parameters commented out
+                     lfc.th      = 0.2, # 1, 
+                     low.th      = 1, # 1,
+                     q1.th       = 0.2, # 0.5, 
+                     q.diff.th   = 0.3, # 0.7
+                     de.score.th = 5,   # 40
+                     min.cells   = 3)   # 4
+
+cluster_new <- iter_clust(datFI,dim.method = "pca", de.param = de.param, split.size = 4)
+(tab <- table(annoFI$cluster_label,as.numeric(as.character(cluster_new$cl))))
+```  
+  
+Plot the results as compared with the initial clustering.  
+  
+```{r plot agreement,fig.height=4,fig.width=7}
+cl22 <- as.numeric(factor(cluster_new$cl,levels = as.numeric(sort(names(apply(tab,2,which.max))))))
+names(cl22) <- annoFI$sample_id
+
+ref.cl    <- setNames(factor(annoFI$cluster_id), annoFI$sample_id)
+ref.cl.df <- as.data.frame(unique(annoFI[,c("cluster_label", "cluster_id")]))
+ref.cl.df <- ref.cl.df[order(ref.cl.df$cluster_id),]
+rownames(ref.cl.df) <- ref.cl.df$cluster_id
+compare.result <- compare_annotate(cl22, ref.cl, ref.cl.df)
+compare.result$g
+ggsave("FigS1_clusterComparisonLenientParams.pdf", width = 7, height = 4)
+``` 
+  
+  
+# Supervised analysis of VEN-associated cluster
+  
+Several studies have identified genes (or proteins) expressed in VENs using a variety of strategies.  Here we will use these genes as a starting point to attempt to split the VEN-associated cluster into multiple cell types using a supervised approach.  First, let's see which of these genes are available for plotting in our study.  
+  
+```{r input interature VEN genes} 
+literature <- c("VAT1L","CHST8","LYPD1","SULF2","BCL11B","FEZF2","SLC18A2","GABRQ","ADRA1A","ATF3","IL4R",
+                "NMB","DISC1","VGF","ABAT","CBLN2","CHRM1","CHRNA4","CNR1","CRYM","DLD","GABBR1","GABRR2",
+                "GABRA","GABRB2","GABRB3","GABRD","GLRB","GLS","GOT1","GOT2","GRIA1","GRIA2","GRIA3","GRIK2",
+                "GRIN1","GRIN2A","GRIN2B","GRIN3A","HRH3","HTR3B","NEFH","NNAT","SCG2","SYT2","TAC1","NPY",
+                "IGFBP2","MEF2C","CPLX1","MBP","PLP1","RNA5SP352","ACA64","ALKBH3","FABP6","PLP1","METRNL",
+                "LINC00982","RNU6-1240P","RGMA","PRR5","HAPLN4","SOHLH1","HTR2B","DRD3","GRP","LMO4")
+print(paste("Genes not in our data set:",paste(setdiff(literature,rownames(datKp)),collapse=", ")))
+literature <- intersect(literature,rownames(normDat))
+```
+  
+  
+Next, calculate PCS of the VEN-associated cluster using this set of genes, and 100 random sets of genes for comparison.  
+  
+```{r PC1 var explained, fig.height=5,fig.width=5} 
+kpVEN  <- clustersF=="Exc FEZF2 GABRQ"
+datVEN <- t(datKp[literature,kpVEN])
+datVEN <- log2(datVEN[,colSums(datVEN)>0]+1)
+pcVEN  <- prcomp(datVEN, center = TRUE, scale = TRUE)
+veVEN  <- (summary(pcVEN))[[6]][2,1]
+
+datRAN <- t(datKp[,kpVEN][rowSums(datKp[,kpVEN])>0,])
+veRAN  <- NULL
+for (i in 1:100){
+  gnRAN <- subsampleCells(rep(0,dim(datRAN)[2]),dim(datVEN)[2],seed=i)
+  pcRAN <- prcomp(datRAN[,gnRAN], center = TRUE, scale = TRUE)
+  veRAN <- c(veRAN,(summary(pcRAN))[[6]][2,1])
+}
+
+hist(veRAN,main=paste("P =",mean(veRAN>veVEN)), xlab="Variance explained by PC1")
+abline(v=veVEN,lwd=3,col="green")
+
+pdf("FigS1_PC1varianceExplained.pdf")
+hist(veRAN,main=paste("P =",mean(veRAN>veVEN)), xlab="Variance explained by PC1")
+abline(v=veVEN,lwd=3,col="green")
+dev.off()
+```
+  
+The variance explained by PC1 is not significantly different from chance.  
+  
+Finally, show a TNSE plot of the results.  
+  
+```{r tsne plot of VEN cells, fig.height=5,fig.width=5} 
+pdf("FigS1_rtsne_plot.pdf",height=8,width=8)
+par(mfrow=c(2,2))
+for (p in c(4:7)){
+  tsne <- Rtsne(datVEN,perplexity=p)$Y
+  plot(tsne,xlab="TSNE 1",ylab="TSNE2",main=paste("Perplexity =",p),pch=19)
+}
+dev.off()
+plot(tsne,xlab="TSNE 1",ylab="TSNE2",main=paste("Perplexity =",p),pch=19)
+```
+  
+There are not obvious subclusters using these genes.  
   
 Output session information.  
   
