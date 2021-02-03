@@ -1,5 +1,5 @@
 # VENcelltypes
-This repository contains code for reproducing the analysis of snRNA-seq data from human fronto-insula
+This repository contains code for reproducing the analysis of snRNA-seq data from human fronto-insula described in [Hodge, Miller, et al 2020](https://www.nature.com/articles/s41467-020-14952-3).
 
 While this is set up as an R library for convenience, it is really just a wrapper for the analysis functions and does not follow all of the conventions of R libraries (function annotation, unit testing, etc.).  Please be sure to cite the appropriate other R libraries if replicating the code.  
 
