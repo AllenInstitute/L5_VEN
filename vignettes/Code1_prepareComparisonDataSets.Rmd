@@ -33,6 +33,7 @@ suppressPackageStartupMessages({
   library(matrixStats)
   library(dplyr)
   library(edgeR)
+  library(data.table)
 })
 options(stringsAsFactors=FALSE)
 ```
@@ -40,11 +41,11 @@ options(stringsAsFactors=FALSE)
   
 ### Process the human MTG data
   
-First we need to read the data into R. *This step is slow.*  
-  
+First we need to read the data into R.  
+
 ```{r read in MTG data}
-exons    <- read.csv("data/human_MTG_2018-06-14_exon-matrix.csv",row.names=1)
-introns  <- read.csv("data/human_MTG_2018-06-14_intron-matrix.csv",row.names=1)
+exons    <- as.matrix(fread("data/human_MTG_2018-06-14_exon-matrix.csv"),rownames=1)
+introns  <- as.matrix(fread("data/human_MTG_2018-06-14_intron-matrix.csv"),rownames=1)
 geneInfo <- read.csv("data/human_MTG_2018-06-14_genes-rows.csv",row.names=1)
 sampInfo <- read.csv("data/human_MTG_2018-06-14_samples-columns.csv",row.names=1)
 ```
@@ -74,7 +75,7 @@ rownames(CPM) <- rownames(geneInfo)
 colnames(CPM) <- sampInfo$sample_id
 CPM <- CPM[,kp]  # Omit cells from outlier clusters as above
 
-## Format appropriate
+## Format appropriately
 data <- as.data.frame(t(CPM))
 data$sample_id <- anno$sample_id
 
@@ -105,11 +106,11 @@ write_feather(data,"MTG/data.feather")
   
 ### Process the mouse VISp data  
   
-First we need to read the data into R. *This step is slow.*  
+First we need to read the data into R.  
   
 ```{r read in VISp data}
-exons    <- read.csv("data/mouse_VISp_2018-06-14_exon-matrix.csv",row.names=1)
-introns  <- read.csv("data/mouse_VISp_2018-06-14_intron-matrix.csv",row.names=1)
+exons    <- as.matrix(fread("data/mouse_VISp_2018-06-14_exon-matrix.csv"),rownames=1)
+introns  <- as.matrix(fread("data/mouse_VISp_2018-06-14_intron-matrix.csv"),rownames=1)
 geneInfo <- read.csv("data/mouse_VISp_2018-06-14_genes-rows.csv",row.names=1)
 sampInfo <- read.csv("data/mouse_VISp_2018-06-14_samples-columns.csv",row.names=1)
 ```
@@ -130,12 +131,12 @@ CPM <- cpm(introns+exons)
 rownames(CPM) <- rownames(geneInfo)
 colnames(CPM) <- anno$sample_id
 
-## Format appropriate
+## Format appropriately
 data <- as.data.frame(t(CPM))
 data$sample_id <- anno$sample_id
 ```
   
-Finally, output the results to feather files in the `MTG` directory.  
+Finally, output the results to feather files in the `VISp` directory.  
   
 ```{r output VISp data}
 # Create MTG directory
@@ -154,8 +155,8 @@ write_feather(data,"VISp/data.feather")
 First we need to read the data into R. *This step is slow.*  
   
 ```{r read in ALM data}
-exons    <- read.csv("data/mouse_ALM_2018-06-14_exon-matrix.csv",row.names=1)
-introns  <- read.csv("data/mouse_ALM_2018-06-14_intron-matrix.csv",row.names=1)
+exons    <- as.matrix(fread("data/mouse_ALM_2018-06-14_exon-matrix.csv"),rownames=1)
+introns  <- as.matrix(fread("data/mouse_ALM_2018-06-14_intron-matrix.csv"),rownames=1)
 geneInfo <- read.csv("data/mouse_ALM_2018-06-14_genes-rows.csv",row.names=1)
 sampInfo <- read.csv("data/mouse_ALM_2018-06-14_samples-columns.csv",row.names=1)
 ```
@@ -176,7 +177,7 @@ CPM <- cpm(introns+exons)
 rownames(CPM) <- rownames(geneInfo)
 colnames(CPM) <- anno$sample_id
 
-## Format appropriate
+## Format appropriately
 data <- as.data.frame(t(CPM))
 data$sample_id <- anno$sample_id
 ```
