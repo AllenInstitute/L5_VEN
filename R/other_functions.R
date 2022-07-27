@@ -2,6 +2,8 @@
 #' Function for getting the plotting genes (to avoid typing it out a bunch of times)
 #'
 #' @return gene vector
+#'
+#' @export
 formatPlotGenes <-function(plotGenes){
   for (k in -sort(-grep("-",topGenesExc))){
     plotGenes=c(plotGenes[1:k],gsub("-","\\.",plotGenes[k]),plotGenes[(k+1):length(plotGenes)]) # Convert - to . for plotting
@@ -12,6 +14,8 @@ formatPlotGenes <-function(plotGenes){
 
 #' Return the row max
 #' 
+#'
+#' @export
 rowMax <- function(x) return(apply(x,1,max))
 
 
@@ -62,6 +66,8 @@ findFromGroups <- function(datExpr,groupVector,fn="mean"){
 
 #' Adds an error bar
 #' 
+#'
+#' @export
 error.bar <- function(x, y, upper, lower=upper, length=0.1,...){
  if(length(x) != length(y) | length(y) !=length(lower) | length(lower) != length(upper))
  stop("vectors must be same length")
@@ -71,6 +77,8 @@ error.bar <- function(x, y, upper, lower=upper, length=0.1,...){
 
 #' Plots and error bar
 #' 
+#'
+#' @export
 errorBarPlot <- function(vals,sampleType,col=standardColors(),legend=TRUE,elwd=2,ylim=NA,xlim=NA,length=0.1,...){
  if(is.null(dim(vals))) vals = cbind(vals,vals)
  yy <- t(findFromGroups(vals,sampleType))
@@ -84,6 +92,8 @@ errorBarPlot <- function(vals,sampleType,col=standardColors(),legend=TRUE,elwd=2
 
 #' Conversion between mouse and human gene names (not used)
 #'
+#'
+#' @export
 mouse2human2 <- function (mouse, m2h){
  # Convert mouse to human symbols
  rownames(m2h) = m2h$Mou
@@ -96,6 +106,8 @@ mouse2human2 <- function (mouse, m2h){
 
 #' t.test wrapper for use with the "apply" function
 #'
+#'
+#' @export
 t.test.l <- function(x){
   l  = length(x)
   tt = t.test(x[1:(l/2)],x[(l/2+1):l],paired=FALSE)
@@ -107,6 +119,8 @@ t.test.l <- function(x){
 
 #' ANOVA for use with the apply function
 #'
+#'
+#' @export
 getAnovaPvalforApply <- function(x,varLabels,varWeights=NULL){
   anovadat  = as.data.frame(cbind(varLabels,x))
   aov.out   = summary(aov(as.numeric(anovadat[,2])~anovadat[,1],data=anovadat,weights=varWeights))  
@@ -116,11 +130,15 @@ getAnovaPvalforApply <- function(x,varLabels,varWeights=NULL){
 
 #' Mean expression
 #'
+#'
+#' @export
 meanEx <- function(x) {if(sum(x)==0) return(0); return(mean(x[x>0]));}
 
 
 #' Paired t.test wrapper for use with the "apply" function
 #'
+#'
+#' @export
 t.test.l.paired <- function(x){
   l  = length(x)
   tt = t.test(x[1:(l/2)],x[(l/2+1):l],paired=TRUE)
@@ -154,7 +172,8 @@ calc_beta <- function(y, spec.exp = 2) {
 # FUNCTIONS FOR BUILDING AND PLOTTING THE TREE ARE BELOW
 
 #' Builds a clustering tree
-#' 
+#'
+#' @export
 getDend <- function(input,distFun = function(x) return(as.dist(1-cor(x)))){
  distCor  = distFun(input) 
  avgClust = hclust(distCor,method="average")
@@ -164,6 +183,7 @@ getDend <- function(input,distFun = function(x) return(as.dist(1-cor(x)))){
 
 #' Labels a clustering tree
 #' 
+#' @export		    
 labelDend <- function(dend,n=1)
   {  
     if(is.null(attr(dend,"label"))){
@@ -327,7 +347,8 @@ updateAndOrderClusters <- function(sampleInfo, # Subsetted Samp.dat file for sam
 
 
 #' Function for getting top marker genes
-#' 
+#'
+#' @export
 getTopMarkersByPropNew <- function(propExpr, medianExpr, propDiff = 0, propMin=0.5, medianFC = 1, 
   excludeGenes = NULL, sortByMedian=TRUE){
   specGenes = rep("none",dim(propExpr)[2])
@@ -437,12 +458,14 @@ renameClusters <- function(sampleInfo,clusterInfo, propExpr, medianExpr, propDif
 
 
 #' Function for getting top marker genes
-#' 
+#'
+#' @export 
 getTopMarkersByProp <- function(...) suppressWarnings(getTopMarkersByProp2(...)) # Warnings are not useful from this function
 
 
 #' Function for getting top marker genes
-#' 
+#'
+#' @export
 getTopMarkersByProp2 <- function(propExpr,n=1,excludeGenes = NULL,medianExpr=NA,fcThresh=0.5,minProp=0){
  prop   = propExpr[!is.element(rownames(propExpr),excludeGenes),]
  cn     = colnames(prop)
@@ -481,7 +504,8 @@ getTopMarkersByProp2 <- function(propExpr,n=1,excludeGenes = NULL,medianExpr=NA,
 
 
 #' Update the sample data
-#' 
+#'
+#' @export
 updateSampDat <- function(Samp.dat,clusterInfo){
   lab = as.character(Samp.dat$cluster_label)
   id  = as.numeric(Samp.dat$cluster_id)
@@ -514,6 +538,7 @@ getBetaScore <- function(propExpr,returnScore=TRUE,spec.exp = 2){
 
 #' Wrapper for plot_dend
 #'
+#' @export
 rankCompleteDendPlot <- function(input=NULL,l.rank=NULL,dend=NULL,label_color=NULL,node_size=3,
     main="Tree",distFun = function(x) return(dist(1-(1+cor(x))/2)),...){
  if(is.null(dend)) dend = getRankedDend(input,l.rank,distFun)
@@ -522,7 +547,8 @@ rankCompleteDendPlot <- function(input=NULL,l.rank=NULL,dend=NULL,label_color=NU
 
 
 #' Allows plot_dend to work properly in a for loop.
-#' 
+#'
+#' @export
 plot_dend <- function(...) print(plot_dend2(...))
   
 
